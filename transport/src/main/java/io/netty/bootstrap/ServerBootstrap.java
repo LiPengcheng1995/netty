@@ -137,8 +137,9 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
         // 拿到 workerGroup
         final EventLoopGroup currentChildGroup = childGroup;
-        // 拿到处理
+        // 拿到之前设置的 childHandler ，这个是完成握手后，处理用户请求的
         final ChannelHandler currentChildHandler = childHandler;
+        // 设置 childHandler 的配置
         final Entry<ChannelOption<?>, Object>[] currentChildOptions;
         synchronized (childOptions) {
             currentChildOptions = childOptions.entrySet().toArray(EMPTY_OPTION_ARRAY);
@@ -149,7 +150,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             @Override
             public void initChannel(final Channel ch) {
                 final ChannelPipeline pipeline = ch.pipeline();
-                ChannelHandler handler = config.handler();
+                ChannelHandler handler = config.handler();// 拿到本 ServerBootStrap 配置的 handler【接收socket接入请求的handler】【默认好像没有】
                 if (handler != null) {
                     pipeline.addLast(handler);
                 }
