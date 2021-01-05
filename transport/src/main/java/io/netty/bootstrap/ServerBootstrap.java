@@ -135,7 +135,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
         ChannelPipeline p = channel.pipeline();
 
-        // 拿到 workerGroup
+        // 拿到 workerGroup ,这个是收连接请求的
         final EventLoopGroup currentChildGroup = childGroup;
         // 拿到之前设置的 childHandler ，这个是完成握手后，处理用户请求的
         final ChannelHandler currentChildHandler = childHandler;
@@ -146,6 +146,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         }
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs = childAttrs.entrySet().toArray(EMPTY_ATTRIBUTE_ARRAY);
 
+        // 在 NioServerSocketChannel 的 pipeLine 中加入我们业务逻辑相关的处理器
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(final Channel ch) {
@@ -154,7 +155,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
                 if (handler != null) {
                     pipeline.addLast(handler);
                 }
-
+                // 在尾端加入我们用于处理业务逻辑的 childHandler
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {

@@ -341,6 +341,9 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         //         because bind() or connect() will be executed *after* the scheduled registration task is executed
         //         because register(), bind(), and connect() are all bound to the same thread.
 
+        // 到这里，基本确定将 NioServerSocketChannel 完成注册到多路复用器上了。有以下情景：
+        // 1. 我们尝试将 Channel 注册到多路复用器上，而且成功
+        // 2. 我们尝试在其他线程中调用此方法进行注册，注册成功
         return regFuture;
     }
 
