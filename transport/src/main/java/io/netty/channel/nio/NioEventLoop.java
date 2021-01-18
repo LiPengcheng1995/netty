@@ -128,6 +128,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     private final SelectStrategy selectStrategy;
 
+    // 执行 io 操作占用的时间比例
     private volatile int ioRatio = 50;
     private int cancelledKeys;
     private boolean needsToSelectAgain;
@@ -431,6 +432,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
     }
 
+    //  SingleThreadEventExecutor 创建好线程后，会调用这里
     @Override
     protected void run() {
         int selectCnt = 0;
@@ -438,6 +440,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             try {
                 int strategy;
                 try {
+                    // 情况如下：
+                    // 1. io 就绪，有任务: >0，返回就绪的 io 通道数量
+                    // 2. io 就绪，无任务: -1，表示应该阻塞等待就绪的 io
+                    // 3. 无就绪 io，有任务: 0
+                    // 4. 无就绪 io，无任务: -1，表示应该阻塞等待就绪的 io
                     strategy = selectStrategy.calculateStrategy(selectNowSupplier, hasTasks());
                     switch (strategy) {
                     case SelectStrategy.CONTINUE:
@@ -446,15 +453,16 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     case SelectStrategy.BUSY_WAIT:
                         // fall-through to SELECT since the busy-wait is not supported with NIO
 
-                    case SelectStrategy.SELECT:
+                    case SelectStrategy.SELECT:// 阻塞等 io
+                        // 拿到距离最近一次要执行的定时任务的时间
                         long curDeadlineNanos = nextScheduledTaskDeadlineNanos();
-                        if (curDeadlineNanos == -1L) {
+                        if (curDeadlineNanos == -1L) {// 没有定时任务，可以一致等着了
                             curDeadlineNanos = NONE; // nothing on the calendar
                         }
                         nextWakeupNanos.set(curDeadlineNanos);
                         try {
-                            if (!hasTasks()) {
-                                strategy = select(curDeadlineNanos);
+                            if (!hasTasks()) {// 最后再确认一下没有要执行的任务
+                                strategy = select(curDeadlineNanos);// 阻塞等io
                             }
                         } finally {
                             // This update is just to help block unnecessary selector wakeups
@@ -473,30 +481,32 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     continue;
                 }
 
-                selectCnt++;
+                selectCnt++;// 标记，本 EventLoop 执行了一次 select
                 cancelledKeys = 0;
                 needsToSelectAgain = false;
                 final int ioRatio = this.ioRatio;
                 boolean ranTasks;
-                if (ioRatio == 100) {
+                if (ioRatio == 100) {// 全部用于执行 io 操作
                     try {
-                        if (strategy > 0) {
-                            processSelectedKeys();
+                        if (strategy > 0) {// 存在就绪的 io 事件
+                            processSelectedKeys();// 处理就绪的 io
                         }
                     } finally {
                         // Ensure we always run tasks.
-                        ranTasks = runAllTasks();
+                        ranTasks = runAllTasks(); // 虽然是 100% 的事件都给了 io ，但是
                     }
                 } else if (strategy > 0) {
                     final long ioStartTime = System.nanoTime();
                     try {
-                        processSelectedKeys();
+                        processSelectedKeys();// 处理就绪的 io
                     } finally {
-                        // Ensure we always run tasks.
+                        // 按照执行 io 事件的比例算出要用来执行定时任务的时间，然后跑这么长时间就行
                         final long ioTime = System.nanoTime() - ioStartTime;
                         ranTasks = runAllTasks(ioTime * (100 - ioRatio) / ioRatio);
                     }
-                } else {
+                } else {// 全部用来执行任务，不再处理 io。
+                    // 其实感觉还好，虽然这里不处理 io ，前面虽然也阻塞等 io。但是阻塞的时间是由距离即将到来的下一次定时任务
+                    // 的时间来的，也不耽误事
                     ranTasks = runAllTasks(0); // This will run the minimum number of tasks
                 }
 

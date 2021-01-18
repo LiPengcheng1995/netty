@@ -38,6 +38,8 @@ public interface SelectStrategy {
      */
     int BUSY_WAIT = -3;
 
+    // 选择策略，第一个参数是判断是否有就绪的io操作，第二个参数是判断是否有等待执行的任务。感觉只是把两个判断给封装了一个接口。
+    // 但是有点生硬，还有耦合挺严重的
     /**
      * The {@link SelectStrategy} can be used to steer the outcome of a potential select
      * call.

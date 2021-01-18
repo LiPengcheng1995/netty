@@ -66,12 +66,21 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
      * @param chooserFactory    the {@link EventExecutorChooserFactory} to use.
      * @param args              arguments which will passed to each {@link #newChild(Executor, Object...)} call
      */
+    //args = [SelectorProvider SelectorProvider.provider(),
+    //        SelectStrategyFactory DefaultSelectStrategyFactory.INSTANCE,
+    //        RejectedExecutionHandler RejectedExecutionHandlers.reject()]
     protected MultithreadEventExecutorGroup(int nThreads, Executor executor,
                                             EventExecutorChooserFactory chooserFactory, Object... args) {
         if (nThreads <= 0) {
             throw new IllegalArgumentException(String.format("nThreads: %d (expected: > 0)", nThreads));
         }
 
+        // 创建默认线程创建工厂，规则如下
+        //
+        // 非daemon、线程优先级5、线程名的前缀、所属的线程组与当前线程相同，一句话，创建的是一个普通线程，其中线程名的前缀为：
+        // nioEventLoopGroup-poolId-, poolId初始值为0，每创建一个DefaultThreadFactory实例值加1。
+        //
+        // nioEventLoopGroup 还是别的，以创建调用的具体类名为准
         if (executor == null) {
             executor = new ThreadPerTaskExecutor(newDefaultThreadFactory());
         }
@@ -81,18 +90,19 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         for (int i = 0; i < nThreads; i ++) {
             boolean success = false;
             try {
+                // 依次创建 NioEventLoop
                 children[i] = newChild(executor, args);
                 success = true;
             } catch (Exception e) {
                 // TODO: Think about if this is a good exception type
                 throw new IllegalStateException("failed to create a child event loop", e);
             } finally {
-                if (!success) {
-                    for (int j = 0; j < i; j ++) {
+                if (!success) {// i 位置创建 NioEventLoop 失败
+                    for (int j = 0; j < i; j ++) {// 把 i 之前的全部关闭
                         children[j].shutdownGracefully();
                     }
 
-                    for (int j = 0; j < i; j ++) {
+                    for (int j = 0; j < i; j ++) {// 等待关闭完成
                         EventExecutor e = children[j];
                         try {
                             while (!e.isTerminated()) {
@@ -108,8 +118,12 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             }
         }
 
+        //chooser实现了eventloopgroup的任务分派，当需要向线程池提交一个新的任务时，如注册一个新的服务端socket到eventloop，则通过chooser选择一个具体的executor。
+        // 其实就是顺着遍历分配
         chooser = chooserFactory.newChooser(children);
 
+        // 加一个钩子，对池子中执行完的 EventLoop 进行计数。
+        // 当确认池子中所有的 EventLoop 都执行结束时，激励本 EventLoopGroup 已经停止。
         final FutureListener<Object> terminationListener = new FutureListener<Object>() {
             @Override
             public void operationComplete(Future<Object> future) throws Exception {
@@ -119,6 +133,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             }
         };
 
+        // 将那钩子在池子中所有 EventLoop 的停止事件都监听
         for (EventExecutor e: children) {
             e.terminationFuture().addListener(terminationListener);
         }

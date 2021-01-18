@@ -824,9 +824,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     }
 
     private void execute(Runnable task, boolean immediate) {
-        boolean inEventLoop = inEventLoop();
+        boolean inEventLoop = inEventLoop();// 判断调用此函数执行的线程是否就是 EventLoop 中的线程
         addTask(task);
-        if (!inEventLoop) {
+        if (!inEventLoop) {// 是外面的线程
             startThread();
             if (isShutdown()) {
                 boolean reject = false;
@@ -940,7 +940,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private static final long SCHEDULE_PURGE_INTERVAL = TimeUnit.SECONDS.toNanos(1);
 
     private void startThread() {
-        if (state == ST_NOT_STARTED) {
+        if (state == ST_NOT_STARTED) {// 还没启动，就 cas 一下状态，然后开始启动
             if (STATE_UPDATER.compareAndSet(this, ST_NOT_STARTED, ST_STARTED)) {
                 boolean success = false;
                 try {
@@ -975,18 +975,19 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private void doStartThread() {
         assert thread == null;
+        // 直接使用创建时传入的执行器
         executor.execute(new Runnable() {
             @Override
             public void run() {
-                thread = Thread.currentThread();
+                thread = Thread.currentThread();// 记录分配好的线程引用
                 if (interrupted) {
                     thread.interrupt();
                 }
 
                 boolean success = false;
-                updateLastExecutionTime();
+                updateLastExecutionTime();// 更新最近执行时间
                 try {
-                    SingleThreadEventExecutor.this.run();
+                    SingleThreadEventExecutor.this.run();// 开始调用 run() 函数，推测这里应该是一个死循环，不停的轮询 selector 和任务队列
                     success = true;
                 } catch (Throwable t) {
                     logger.warn("Unexpected exception from an event executor: ", t);
