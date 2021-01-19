@@ -118,10 +118,11 @@ public abstract class ReferenceCountUpdater<T extends ReferenceCounted> {
 
     // rawIncrement == increment << 1
     private T retain0(T instance, final int increment, final int rawIncrement) {
-        int oldRef = updater().getAndAdd(instance, rawIncrement);
+        int oldRef = updater().getAndAdd(instance, rawIncrement);// 计数器+1
         if (oldRef != 2 && oldRef != 4 && (oldRef & 1) != 0) {
             throw new IllegalReferenceCountException(0, increment);
         }
+        // 越界，报错
         // don't pass 0!
         if ((oldRef <= 0 && oldRef + rawIncrement >= 0)
                 || (oldRef >= 0 && oldRef + rawIncrement < oldRef)) {

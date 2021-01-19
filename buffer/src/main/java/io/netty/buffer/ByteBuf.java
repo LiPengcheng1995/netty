@@ -308,6 +308,7 @@ public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf> {
      * Returns {@code true} if and only if this buffer is backed by an
      * NIO direct buffer.
      */
+    // 如果由 NIO 直接缓冲区支持就返回 true【与之对应的是使用堆内存】
     public abstract boolean isDirect();
 
     /**
@@ -2350,6 +2351,7 @@ public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf> {
      * If this method returns true, you can safely call {@link #array()} and
      * {@link #arrayOffset()}.
      */
+    // 如果使用数组实现就返回 true
     public abstract boolean hasArray();
 
     /**
@@ -2358,6 +2360,7 @@ public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf> {
      * @throws UnsupportedOperationException
      *         if there no accessible backing byte array
      */
+    // 如果使用数组实现【hasArray() 返回 true】，就返回数组，否则抛出异常
     public abstract byte[] array();
 
     /**

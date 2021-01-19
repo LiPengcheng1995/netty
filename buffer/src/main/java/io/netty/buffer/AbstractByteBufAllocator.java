@@ -256,13 +256,15 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
                     minNewCapacity, maxCapacity));
         }
         final int threshold = CALCULATE_THRESHOLD; // 4 MiB page
-
+        // 要扩容的正好是阈值，直接返回
         if (minNewCapacity == threshold) {
             return threshold;
         }
 
         // If over threshold, do not double but just increase by threshold.
+        // 比阈值大，已经挺大了，不要直接做指数扩张
         if (minNewCapacity > threshold) {
+            // 直接扩张到比 minNewCapacity 大的 threshold 整数倍即可
             int newCapacity = minNewCapacity / threshold * threshold;
             if (newCapacity > maxCapacity - threshold) {
                 newCapacity = maxCapacity;
@@ -273,8 +275,10 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
         }
 
         // Not over threshold. Double up to 4 MiB, starting from 64.
+        // 比阈值小，可以做倍增操作，毕竟比较小，这样可以降低重复扩张带来的时间成本
         int newCapacity = 64;
         while (newCapacity < minNewCapacity) {
+            // 直接扩张到比 minNewCapacity 大的 2 的 n 次方即可
             newCapacity <<= 1;
         }
 

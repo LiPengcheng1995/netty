@@ -35,10 +35,19 @@ import static io.netty.util.internal.ObjectUtil.checkNotNull;
  * {@link UnpooledByteBufAllocator#heapBuffer(int, int)}, {@link Unpooled#buffer(int)} and
  * {@link Unpooled#wrappedBuffer(byte[])} instead of calling the constructor explicitly.
  */
+// 基于堆内存进行内存分配的字节缓冲区，没有基于对象池技术实现，这意味着每次 IO 的读写都会创建一个新的 UnpooledHeapByteBuf
+// 频繁进行大块内存的分配和回收会影响性能，但是相比于堆外内存的申请/释放，成本还是低一些的。
+//
+// 如果想使用有池技术的,可以看 PooledHeapByteBuf
 public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
 
+    // 用于内存分配
     private final ByteBufAllocator alloc;
+
+    // 存储区。为提升性能，方便操作，这里用的数组而非 ByteBuffer
     byte[] array;
+
+    // 用于实现 Netty ByteBuf 到 JDK ByteBuffer 的转换
     private ByteBuffer tmpNioBuf;
 
     /**
@@ -114,8 +123,10 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
         return array.length;
     }
 
+    // 动态扩容
     @Override
     public ByteBuf capacity(int newCapacity) {
+        // 校验容量合理【大于0，不越界】
         checkNewCapacity(newCapacity);
         byte[] oldArray = array;
         int oldCapacity = oldArray.length;
@@ -127,12 +138,13 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
         if (newCapacity > oldCapacity) {
             bytesToCopy = oldCapacity;
         } else {
-            trimIndicesToCapacity(newCapacity);
+            trimIndicesToCapacity(newCapacity);// 把读写索引降级到容量内
             bytesToCopy = newCapacity;
         }
+        // 创建新的数组并拷贝
         byte[] newArray = allocateArray(newCapacity);
         System.arraycopy(oldArray, 0, newArray, 0, bytesToCopy);
-        setArray(newArray);
+        setArray(newArray);// 更新 array 、tmpNioBuf
         freeArray(oldArray);
         return this;
     }
@@ -245,6 +257,7 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
     @Override
     public ByteBuf setBytes(int index, ByteBuf src, int srcIndex, int length) {
         checkSrcIndex(index, length, srcIndex, src.capacity());
+        // 传入的可能是链表或者数组存储的，根据具体情况进行拷贝
         if (src.hasMemoryAddress()) {
             PlatformDependent.copyMemory(src.memoryAddress() + srcIndex, array, index, length);
         } else  if (src.hasArray()) {

@@ -23,6 +23,7 @@ import io.netty.util.internal.ReferenceCountUpdater;
 /**
  * Abstract base class for {@link ByteBuf} implementations that count references.
  */
+// 主要是对引用进行计数，类似 JVM 内存回收的对象引用计数器，用于跟踪对象的分配的销毁，做自动内存回收
 public abstract class AbstractReferenceCountedByteBuf extends AbstractByteBuf {
     private static final long REFCNT_FIELD_OFFSET =
             ReferenceCountUpdater.getUnsafeOffset(AbstractReferenceCountedByteBuf.class, "refCnt");
@@ -112,6 +113,7 @@ public abstract class AbstractReferenceCountedByteBuf extends AbstractByteBuf {
         return result;
     }
 
+    // 销毁
     /**
      * Called once {@link #refCnt()} is equals 0.
      */

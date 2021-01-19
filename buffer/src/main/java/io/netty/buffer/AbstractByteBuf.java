@@ -118,6 +118,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
     @Override
     public ByteBuf readerIndex(int readerIndex) {
         if (checkBounds) {
+            // 校验，读索引必须比写索引低
             checkIndexBounds(readerIndex, writerIndex, capacity());
         }
         this.readerIndex = readerIndex;
@@ -214,17 +215,21 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public ByteBuf discardReadBytes() {
-        if (readerIndex == 0) {
+        if (readerIndex == 0) {//没有需要丢弃的内容
             ensureAccessible();
             return this;
         }
 
-        if (readerIndex != writerIndex) {
+        if (readerIndex != writerIndex) {// 有需要丢弃的，也有需要保存的
+            // 将需要保存的拷贝过去
             setBytes(0, this, readerIndex, writerIndex - readerIndex);
+            // 写索引往低位移动
             writerIndex -= readerIndex;
+            // 清理标记：要丢弃内容的标记都清除，其他的写标记往低位移动
             adjustMarkers(readerIndex);
             readerIndex = 0;
         } else {
+            // 直接清理了
             ensureAccessible();
             adjustMarkers(readerIndex);
             writerIndex = readerIndex = 0;
@@ -300,9 +305,13 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
         // Normalize the target capacity to the power of 2.
         final int fastWritable = maxFastWritableBytes();
+        // 如果不够，就扩容
+
+        // 拿到新的容量
         int newCapacity = fastWritable >= minWritableBytes ? writerIndex + fastWritable
                 : alloc().calculateNewCapacity(targetCapacity, maxCapacity);
 
+        // 扩容
         // Adjust to the new capacity.
         capacity(newCapacity);
     }
@@ -894,8 +903,11 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public ByteBuf readBytes(byte[] dst, int dstIndex, int length) {
+        // 校验可读空间，length不能为负数，且可读内容要 >= length
         checkReadableBytes(length);
+        // 负责到 dst 中
         getBytes(readerIndex, dst, dstIndex, length);
+        // 读指针向后移动
         readerIndex += length;
         return this;
     }
@@ -970,6 +982,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public ByteBuf skipBytes(int length) {
+        // 判断：要跳过的长度必须为正数，且不大于可读的长度
         checkReadableBytes(length);
         readerIndex += length;
         return this;
@@ -1072,8 +1085,12 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public ByteBuf writeBytes(byte[] src, int srcIndex, int length) {
+        // 校验可用空间，length不能为负数。
+        // 可写内容 >= length，直接OK。否则判断是否超过动态扩容上限，如果超过就报错，否则扩容即可
         ensureWritable(length);
+        // 写入
         setBytes(writerIndex, src, srcIndex, length);
+        // 写指针后移
         writerIndex += length;
         return this;
     }

@@ -35,6 +35,8 @@ import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
  * {@link UnpooledByteBufAllocator#directBuffer(int, int)}, {@link Unpooled#directBuffer(int)} and
  * {@link Unpooled#wrappedBuffer(ByteBuffer)} instead of calling the constructor explicitly.
  */
+// 此类的业务逻辑和  UnpooledHeapByteBuf 相似，唯一的区别是使用了io直接缓存技术。
+// 使用方法很简单，之前用数组做的存储区，这里直接用 ByteBuffer.allocateDirect() 创建的 ByteBuffer 做存储区。
 public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
 
     private final ByteBufAllocator alloc;
@@ -101,6 +103,7 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
      * Allocate a new direct {@link ByteBuffer} with the given initialCapacity.
      */
     protected ByteBuffer allocateDirect(int initialCapacity) {
+        // 直接依赖 nio 的 api 进行直接内存的分配
         return ByteBuffer.allocateDirect(initialCapacity);
     }
 
@@ -153,6 +156,7 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
             bytesToCopy = newCapacity;
         }
         ByteBuffer oldBuffer = buffer;
+        // 分配直接内存
         ByteBuffer newBuffer = allocateDirect(newCapacity);
         oldBuffer.position(0).limit(bytesToCopy);
         newBuffer.position(0).limit(bytesToCopy);

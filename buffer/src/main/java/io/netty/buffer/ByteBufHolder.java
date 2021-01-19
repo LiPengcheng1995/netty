@@ -20,6 +20,8 @@ import io.netty.util.ReferenceCounted;
 /**
  * A packet which is send or receive.
  */
+// 因为 ByteBuf 有 n 多个实现类，在实际业务中也会根据使用的协议出现不同的定制需求。
+// 这里抽象出这个类，用于进行包装和抽象。
 public interface ByteBufHolder extends ReferenceCounted {
 
     /**
