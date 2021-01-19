@@ -81,6 +81,7 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
      */
     ChannelId id();
 
+    // 本 Channel 注册到的多路复用器，本 Channel 对应的 io 相关操作都在此 EventLoop 对应的线程中执行
     /**
      * Return the {@link EventLoop} this {@link Channel} was registered to.
      */
@@ -114,6 +115,7 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
      */
     boolean isActive();
 
+    // 一个 Channel 对应的一个物理连接，这个可以拿到当前连接的底层参数配置
     /**
      * Return the {@link ChannelMetadata} of the {@link Channel} which describe the nature of the {@link Channel}.
      */
@@ -187,6 +189,9 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
      */
     ByteBufAllocator alloc();
 
+    /**
+     * 从 Channel 读取数据到 inbound 缓冲区。
+     */
     @Override
     Channel read();
 
@@ -253,6 +258,7 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
          */
         void disconnect(ChannelPromise promise);
 
+        // 关闭当前连接
         /**
          * Close the {@link Channel} of the {@link ChannelPromise} and notify the {@link ChannelPromise} once the
          * operation was complete.

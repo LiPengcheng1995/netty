@@ -50,6 +50,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     private static final InternalLogger logger =
             InternalLoggerFactory.getInstance(AbstractNioChannel.class);
 
+    // nio 包的 NioSocketChannel 或者 NioServerSocketChannel 的公共父类
     private final SelectableChannel ch;
     protected final int readInterestOp;
     volatile SelectionKey selectionKey;
@@ -377,6 +378,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         boolean selected = false;
         for (;;) {
             try {
+                // 注册时写的0，表示对任何 io 事件都不感兴趣
+                // 注册时把本身当作附件穿进去，，收到网络事件时可以从 SelectionKey 中重新拿到 Channel 对象
                 selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
                 return;
             } catch (CancelledKeyException e) {

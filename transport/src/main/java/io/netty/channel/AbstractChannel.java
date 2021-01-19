@@ -463,8 +463,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 设置 EventLoop
             AbstractChannel.this.eventLoop = eventLoop;
 
+            // 确保在 EventLoop 中调用注册，以达到线程安全
             if (eventLoop.inEventLoop()) {
                 register0(promise);
             } else {
@@ -494,6 +496,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                     return;
                 }
                 boolean firstRegistration = neverRegistered;
+                // 调用具体实现方法做注册
                 doRegister();
                 neverRegistered = false;
                 registered = true;
@@ -503,11 +506,14 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 pipeline.invokeHandlerAddedIfNeeded();
 
                 safeSetSuccess(promise);
+                // 通知 pipeline 中的 ChannelInboundHandler#channelRegistered
                 pipeline.fireChannelRegistered();
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
                 // multiple channel actives if the channel is deregistered and re-registered.
                 if (isActive()) {
                     if (firstRegistration) {
+
+                        // 通知 pipeline 中的 ChannelInboundHandler#channelActive
                         pipeline.fireChannelActive();
                     } else if (config().isAutoRead()) {
                         // This channel was registered before and autoRead() is set. This means we need to begin read
