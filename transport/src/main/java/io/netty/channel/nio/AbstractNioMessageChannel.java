@@ -122,32 +122,41 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
         }
     }
 
+    // 这个和 AbstractNioByteChannel 差不多，套路是一样的，只是这里发送的是 POJO；而 AbstractNioByteChannel 发送的是
+    // ByteBuf
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
         final SelectionKey key = selectionKey();
         final int interestOps = key.interestOps();
 
         for (;;) {
+            // 拿出当前要处理的消息
             Object msg = in.current();
+            // 发完了
             if (msg == null) {
                 // Wrote all messages.
-                if ((interestOps & SelectionKey.OP_WRITE) != 0) {
-                    key.interestOps(interestOps & ~SelectionKey.OP_WRITE);
+                if ((interestOps & SelectionKey.OP_WRITE) != 0) {// 当前还在监听写入的事件，用来处理半包
+                    key.interestOps(interestOps & ~SelectionKey.OP_WRITE);// 清除对写入事件的监听，不用处理半包了
                 }
                 break;
             }
+            // 需要发送
             try {
                 boolean done = false;
+                // 拿到要发送的次数上限，然后循环发送
                 for (int i = config().getWriteSpinCount() - 1; i >= 0; i--) {
+                    // 返回 true 表示发送成功且发送完成了
+                    // 否则需要继续发送
                     if (doWriteMessage(msg, in)) {
                         done = true;
                         break;
                     }
                 }
 
-                if (done) {
-                    in.remove();
+                if (done) {// 发送成功
+                    in.remove();// 移除已经发送的数据
                 } else {
+                    // 还需要继续发送，监听写入的事件，用来处理半包信息（也就是继续发送剩下的）
                     // Did not write all messages.
                     if ((interestOps & SelectionKey.OP_WRITE) == 0) {
                         key.interestOps(interestOps | SelectionKey.OP_WRITE);

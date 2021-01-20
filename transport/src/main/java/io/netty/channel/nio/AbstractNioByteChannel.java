@@ -46,6 +46,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             " (expected: " + StringUtil.simpleClassName(ByteBuf.class) + ", " +
             StringUtil.simpleClassName(FileRegion.class) + ')';
 
+    // 用来写半包消息
     private final Runnable flushTask = new Runnable() {
         @Override
         public void run() {
@@ -213,20 +214,23 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     }
 
     private int doWriteInternal(ChannelOutboundBuffer in, Object msg) throws Exception {
-        if (msg instanceof ByteBuf) {
+        if (msg instanceof ByteBuf) {// 如果是 ByteBuf ，就判断是否有可读的信息，如果没有，直接从发送数组中删除此信息即可
             ByteBuf buf = (ByteBuf) msg;
             if (!buf.isReadable()) {
                 in.remove();
                 return 0;
             }
 
+            // 进行数据写入
+            // localFlushedAmount 为正数表明这部分数据写进去了，返回的应该是写进去的字节数
+            // 返回其他的数因该是表明出了问题，不应该继续发送
             final int localFlushedAmount = doWriteBytes(buf);
             if (localFlushedAmount > 0) {
-                in.progress(localFlushedAmount);
-                if (!buf.isReadable()) {
+                in.progress(localFlushedAmount);// 通知 ChannelOutboundBuffer 更新发送进度
+                if (!buf.isReadable()) {// 这个对象发完了，直接移除即可
                     in.remove();
                 }
-                return 1;
+                return 1;// 发送完一次数据，返回一个 1
             }
         } else if (msg instanceof FileRegion) {
             FileRegion region = (FileRegion) msg;
@@ -247,23 +251,31 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             // Should not reach here.
             throw new Error();
         }
-        return WRITE_STATUS_SNDBUF_FULL;
+        return WRITE_STATUS_SNDBUF_FULL; // 上面发送出了问题，返回一个最大的正数，直接把外层的循环计数弄成负的
     }
 
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
+        // 拿到当写入未完成时（也就是出现写半包时），可以写入的次数
+        // TODO 因为在做循环发送时，IO 线程会一直尝试进行写操作，无法即使处理其他的相关 io事件 或者任务
+        // TODO 如果网络 IO 阻塞或者对方接受过慢，会导致线程卡死
         int writeSpinCount = config().getWriteSpinCount();
         do {
+            // 拿到要写入的消息
             Object msg = in.current();
             if (msg == null) {
-                // Wrote all messages.
-                clearOpWrite();
+                // 消息已经写完了
+                clearOpWrite();// 清除半包标识
                 // Directly return here so incompleteWrite(...) is not called.
                 return;
             }
+            // 要发送的消息不为空，调用发送，并修改循环计数器
+            // TODO 这里如果没有写完 msg ，应该是不再调用 in.remove()，继续循环写当前元素剩下的半包
             writeSpinCount -= doWriteInternal(in, msg);
         } while (writeSpinCount > 0);
 
+        // writeSpinCount < 0 = true ：在写入时出错了，writeSpinCount-WRITE_STATUS_SNDBUF_FULL, 直接给弄成负的了
+        // writeSpinCount < 0 = false：在循环内没有完成整个业务数据的写入，启动半包的相关处理任务【这时 writeSpinCount = 0】
         incompleteWrite(writeSpinCount < 0);
     }
 
@@ -288,15 +300,20 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
     protected final void incompleteWrite(boolean setOpWrite) {
         // Did not write completely.
+        // 之前写入失败了，也就是说当前底层不太支持写
         if (setOpWrite) {
+            // 设置写半包标记位。
+            // 这样，多路复用器会不停的轮询本 Channel ，用于触发对应的半包写入消息
             setOpWrite();
-        } else {
+        } else {// 在设置的循环内没有完成整个业务数据的写入，需要继续写
+            // 清除写半包标记位
             // It is possible that we have set the write OP, woken up by NIO because the socket is writable, and then
             // use our write quantum. In this case we no longer want to set the write OP because the socket is still
             // writable (as far as we know). We will find out next time we attempt to write if the socket is writable
             // and set the write OP if necessary.
             clearOpWrite();
 
+            // 直接提交一个写剩下数据的任务【这里算是一个缓和的降级操作吧，毕竟发送的东西太多或者网络条件太差了】
             // Schedule flush again later so other tasks can be picked up in the meantime
             eventLoop().execute(flushTask);
         }
@@ -336,6 +353,10 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         }
     }
 
+    /**
+     * 这里是清除半包标识。
+     * TODO 后面看一下这里为啥要清除？有啥联动不？
+     */
     protected final void clearOpWrite() {
         final SelectionKey key = selectionKey();
         // Check first if the key is still valid as it may be canceled as part of the deregistration
@@ -345,6 +366,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             return;
         }
         final int interestOps = key.interestOps();
+        // 如果写操作位为1，则设置成0
         if ((interestOps & SelectionKey.OP_WRITE) != 0) {
             key.interestOps(interestOps & ~SelectionKey.OP_WRITE);
         }

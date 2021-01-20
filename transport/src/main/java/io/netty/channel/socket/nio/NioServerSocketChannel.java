@@ -107,6 +107,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
 
     @Override
     public boolean isActive() {
+        // 内部的 nio channel 是开启状态，而且监听端口是已经绑定状态，才返回 true
         // As java.nio.ServerSocketChannel.isBound() will continue to return true even after the channel was closed
         // we will also need to check if it is open.
         return isOpen() && javaChannel().socket().isBound();
@@ -142,12 +143,21 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
         javaChannel().close();
     }
 
+    /**
+     * 接受客户端连接，创建 NioSocketChannel 对象
+     * @param buf
+     * @return
+     * @throws Exception
+     */
     @Override
     protected int doReadMessages(List<Object> buf) throws Exception {
+        // 通过调用 nio 的 ServerSocketChannel ，拿到连接 SocketChannel
         SocketChannel ch = SocketUtils.accept(javaChannel());
 
         try {
-            if (ch != null) {
+            if (ch != null) {// 拿到的连接不为空
+                // 利用当前的 NioServerSocketChannel、EventLoop、SocketChannel 创建 NioSocketChannel
+                // 并假如列表
                 buf.add(new NioSocketChannel(this, ch));
                 return 1;
             }

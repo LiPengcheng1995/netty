@@ -53,6 +53,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     // nio 包的 NioSocketChannel 或者 NioServerSocketChannel 的公共父类
     private final SelectableChannel ch;
     protected final int readInterestOp;
+    // ch 在 多路复用器注册后拿到的 key
+    // 这里可以用来控制本 Channel 感兴趣的 io 事件
     volatile SelectionKey selectionKey;
     boolean readPending;
     private final Runnable clearReadPendingRunnable = new Runnable() {
@@ -78,6 +80,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
      * @param readInterestOp    the ops to set to receive data from the {@link SelectableChannel}
      */
     protected AbstractNioChannel(Channel parent, SelectableChannel ch, int readInterestOp) {
+        //
         super(parent);
         this.ch = ch;
         this.readInterestOp = readInterestOp;
@@ -384,11 +387,14 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                 return;
             } catch (CancelledKeyException e) {
                 if (!selected) {
+                    // 如果是第一次遇到注册返回的 SelectionKey 已经被取消，调用 selectNow（） 将已经取消的 SelectionKey
+                    // 从多路复用器删掉，尝试重新注册
                     // Force the Selector to select now as the "canceled" SelectionKey may still be
                     // cached and not removed because no Select.select(..) operation was called yet.
                     eventLoop().selectNow();
                     selected = true;
                 } else {
+                    // 如果重复出现已经取消的 SelectionKey， 快速失败，可能是遇到了 JDK 的 bug
                     // We forced a select operation on the selector before but the SelectionKey is still cached
                     // for whatever reason. JDK bug ?
                     throw e;
@@ -406,13 +412,15 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     protected void doBeginRead() throws Exception {
         // Channel.read() or ChannelHandlerContext.read() was called
         final SelectionKey selectionKey = this.selectionKey;
-        if (!selectionKey.isValid()) {
+        if (!selectionKey.isValid()) {// Channel 已经关闭，直接结束
             return;
         }
 
         readPending = true;
 
+        // 拿到当前设置的操作位
         final int interestOps = selectionKey.interestOps();
+        // 如果当前设置的操作位没有设置读操作，就设置上
         if ((interestOps & readInterestOp) == 0) {
             selectionKey.interestOps(interestOps | readInterestOp);
         }

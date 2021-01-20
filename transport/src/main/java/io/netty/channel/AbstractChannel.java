@@ -1126,6 +1126,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     /**
      * Flush the content of the given buffer to the remote peer.
      */
+    // 将本 Class 中的 outboundBuffer 写到远程的端
     protected abstract void doWrite(ChannelOutboundBuffer in) throws Exception;
 
     /**
