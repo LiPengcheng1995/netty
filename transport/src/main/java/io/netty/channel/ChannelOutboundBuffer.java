@@ -334,7 +334,7 @@ public final class ChannelOutboundBuffer {
      */
     public void removeBytes(long writtenBytes) {
         for (;;) {
-            Object msg = current();
+            Object msg = current(); // 从第一条缓冲区开始处理
             if (!(msg instanceof ByteBuf)) {
                 assert writtenBytes == 0;
                 break;
@@ -344,13 +344,14 @@ public final class ChannelOutboundBuffer {
             final int readerIndex = buf.readerIndex();
             final int readableBytes = buf.writerIndex() - readerIndex;
 
-            if (readableBytes <= writtenBytes) {
+            if (readableBytes <= writtenBytes) {// 发送的字节数大于等于可读的字节数，说明当前缓冲区是全发完的
                 if (writtenBytes != 0) {
-                    progress(readableBytes);
+                    progress(readableBytes);// 处理一下当前发送进度，顺便该触发事件就触发事件
                     writtenBytes -= readableBytes;
                 }
-                remove();
+                remove();// 把已经发送完的缓冲区移除
             } else { // readableBytes > writtenBytes
+                // 发送的字节数比当前缓冲区可读的少，说明发生了写半包，此时把当前缓冲区已经读了的字节数处理一下即可
                 if (writtenBytes != 0) {
                     buf.readerIndex(readerIndex + (int) writtenBytes);
                     progress(writtenBytes);
@@ -358,6 +359,7 @@ public final class ChannelOutboundBuffer {
                 break;
             }
         }
+        // 清理掉本次生成的 ByteBuffer 数组，方便 GC ，后面继续写剩下的数据时会重新生成
         clearNioBuffers();
     }
 

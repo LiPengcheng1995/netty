@@ -296,6 +296,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
             ensureAccessible();
             return;
         }
+        // 目标容量超过了最大容量，直接结束
         if (checkBounds && (targetCapacity < 0 || targetCapacity > maxCapacity)) {
             ensureAccessible();
             throw new IndexOutOfBoundsException(String.format(
@@ -303,6 +304,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
                     writerIndex, minWritableBytes, maxCapacity, this));
         }
 
+        // 拿到本 ByteBuf 当前可写范围
         // Normalize the target capacity to the power of 2.
         final int fastWritable = maxFastWritableBytes();
         // 如果不够，就扩容
@@ -1147,8 +1149,11 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public int writeBytes(ScatteringByteChannel in, int length) throws IOException {
+        // 确保能写下 length 长度字符，该扩容先扩容
         ensureWritable(length);
+        // 字符写入
         int writtenBytes = setBytes(writerIndex, in, length);
+        // 调整指针
         if (writtenBytes > 0) {
             writerIndex += writtenBytes;
         }

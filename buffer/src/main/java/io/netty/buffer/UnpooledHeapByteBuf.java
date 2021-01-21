@@ -292,6 +292,7 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
     public int setBytes(int index, ScatteringByteChannel in, int length) throws IOException {
         ensureAccessible();
         try {
+            // 从 nio 的 SocketChannel 中读取字符到缓冲区 tmpNioBuf
             return in.read((ByteBuffer) internalNioBuffer().clear().position(index).limit(index + length));
         } catch (ClosedChannelException ignored) {
             return -1;

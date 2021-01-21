@@ -350,6 +350,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     @Override
     protected int doReadBytes(ByteBuf byteBuf) throws Exception {
         final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
+        // 从 nio 的 SocketChannel 中读取 writableBytes 个字节到 ByteBuf 中
         allocHandle.attemptedBytesRead(byteBuf.writableBytes());
         return byteBuf.writeBytes(javaChannel(), allocHandle.attemptedBytesRead());
     }
@@ -418,7 +419,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
                     ByteBuffer buffer = nioBuffers[0];
                     int attemptedBytes = buffer.remaining();
                     final int localWrittenBytes = ch.write(buffer);
-                    if (localWrittenBytes <= 0) {// 写入失败，监听写事件找机会继续写
+                    if (localWrittenBytes <= 0) {// 写入失败，监听写事件找机会继续写【可能是发送缓冲区满了】
                         incompleteWrite(true);
                         return;
                     }
@@ -458,6 +459,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         } while (writeSpinCount > 0);
 
         // 一轮循环没写完，以任务的形式丢进去，避免把 Reactor 线程池卡死
+        // 其实这里只可能传 false 了， 中间中断的都直接手动传 true 进行调用的
         incompleteWrite(writeSpinCount < 0);
     }
 
