@@ -449,7 +449,12 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             return remoteAddress0();
         }
 
-        // Channel 在 EventLoop 上注册监听
+        /**
+         * 用于将当前 Unsafe 对应的 Channel 注册到 EventLoop 的多路复用器上，然后调用 DefaultChannelPipeLine
+         * 的 fireChannelActive 方法
+         * @param eventLoop
+         * @param promise
+         */
         @Override
         public final void register(EventLoop eventLoop, final ChannelPromise promise) {
             ObjectUtil.checkNotNull(eventLoop, "eventLoop");
