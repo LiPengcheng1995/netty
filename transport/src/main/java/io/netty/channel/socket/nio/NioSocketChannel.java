@@ -306,21 +306,25 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
 
     @Override
     protected boolean doConnect(SocketAddress remoteAddress, SocketAddress localAddress) throws Exception {
-        if (localAddress != null) {
+        if (localAddress != null) {// 如果本地地址不为空，先绑定本地地址
             doBind0(localAddress);
         }
 
         boolean success = false;
         try {
+            // 连接远程地址，返回结果：
+            // 1. 直接连接成功，返回 true
+            // 2. 暂时没连接上，因为对方还没返回 ACK 应答，连接结果不确定，返回 false
+            // 3. 连接失败，抛出 IO 异常
             boolean connected = SocketUtils.connect(javaChannel(), remoteAddress);
-            if (!connected) {
+            if (!connected) {// 对方暂未应答，不要阻塞等到，去多路复用器注册一个事件然后结束
                 selectionKey().interestOps(SelectionKey.OP_CONNECT);
             }
-            success = true;
+            success = true;// 只要不是立即失败，都算成功
             return connected;
         } finally {
             if (!success) {
-                doClose();
+                doClose();// 如果连接失败，关闭 nio 的 NioSocketChannel
             }
         }
     }
@@ -366,11 +370,13 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         // By default we track the SO_SNDBUF when ever it is explicitly set. However some OSes may dynamically change
         // SO_SNDBUF (and other characteristics that determine how much data can be written at once) so we should try
         // make a best effort to adjust as OS behavior changes.
-        if (attempted == written) {
-            if (attempted << 1 > oldMaxBytesPerGatheringWrite) {
+        if (attempted == written) {// 当前缓冲区一次都发送完了
+            if (attempted << 1 > oldMaxBytesPerGatheringWrite) {// 如果比最大数量大都能一次发完，可以自适应的调大发送的最大值限制
                 ((NioSocketChannelConfig) config).setMaxBytesPerGatheringWrite(attempted << 1);
             }
         } else if (attempted > MAX_BYTES_PER_GATHERING_WRITE_ATTEMPTED_LOW_THRESHOLD && written < attempted >>> 1) {
+            // 单次没发完，而且要发送的比单次要发送的限制大，而且实际写进去的比要发出去的小了很多
+            // 这说明要发的多而一次能发的少【可能是网不好，或者系统环境的原因】，就自适应的调小发送的最大值限制
             ((NioSocketChannelConfig) config).setMaxBytesPerGatheringWrite(attempted >>> 1);
         }
     }
@@ -378,7 +384,8 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
         SocketChannel ch = javaChannel();
-        // 循环计数
+        // 拿到配置的允许循环的次数，以避免长时间处在发送状态， Reactor 线程无法及时读取其他的消息和执行
+        // 排队的 task
         int writeSpinCount = config().getWriteSpinCount();
         do {
             if (in.isEmpty()) {
@@ -390,29 +397,35 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
             }
 
             // Ensure the pending writes are made of ByteBufs only.
+            // 拿到可以一次写入的最大字节数，默认是 Integer.MAX_VALUE
             int maxBytesPerGatheringWrite = ((NioSocketChannelConfig) config).getMaxBytesPerGatheringWrite();
+            // 拿到所有要发送的 ByteBuf 缓冲区，并转化成 nio 包的 ByteBuffer
             ByteBuffer[] nioBuffers = in.nioBuffers(1024, maxBytesPerGatheringWrite);
+            // 拿到要发送的 ByteBuf 缓冲区的个数，感觉这个操作和  nioBuffers.length 一个意思
             int nioBufferCnt = in.nioBufferCount();
 
             // Always use nioBuffers() to workaround data-corruption.
             // See https://github.com/netty/netty/issues/2761
             switch (nioBufferCnt) {
-                case 0:
+                case 0:// 要发送的 ByteBuf 缓冲区发完了，继续调一下，看是否还有其他类型的缓冲区需要处理的
                     // We have something else beside ByteBuffers to write so fallback to normal writes.
                     writeSpinCount -= doWrite0(in);
                     break;
-                case 1: {
+                case 1: {// 只有一个 ByteBuf 缓冲区，直接发
                     // Only one ByteBuf so use non-gathering write
                     // Zero length buffers are not added to nioBuffers by ChannelOutboundBuffer, so there is no need
                     // to check if the total size of all the buffers is non-zero.
                     ByteBuffer buffer = nioBuffers[0];
                     int attemptedBytes = buffer.remaining();
                     final int localWrittenBytes = ch.write(buffer);
-                    if (localWrittenBytes <= 0) {
+                    if (localWrittenBytes <= 0) {// 写入失败，监听写事件找机会继续写
                         incompleteWrite(true);
                         return;
                     }
+                    // 根据发送情况自适应调整单次发送最大值限制
                     adjustMaxBytesPerGatheringWrite(attemptedBytes, localWrittenBytes, maxBytesPerGatheringWrite);
+                    // 发出去的字节数拿掉，避免重复发送，
+                    // 同时，该触发写事件的触发一下事件
                     in.removeBytes(localWrittenBytes);
                     --writeSpinCount;
                     break;
@@ -421,15 +434,22 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
                     // Zero length buffers are not added to nioBuffers by ChannelOutboundBuffer, so there is no need
                     // to check if the total size of all the buffers is non-zero.
                     // We limit the max amount to int above so cast is safe
+                    // 这里不用考虑 0 长度的缓冲区，因为 nioBuffers() 给考虑了
+                    // 这里不用考虑长度过长的缓冲区，因为前面维护的最大数量考虑了
+                    // 直接发送即可
                     long attemptedBytes = in.nioBufferSize();
+                    // 直接聚合发送即可，这是 Java 的 nio 包提供的功能
                     final long localWrittenBytes = ch.write(nioBuffers, 0, nioBufferCnt);
-                    if (localWrittenBytes <= 0) {
+                    if (localWrittenBytes <= 0) {// 发送失败，等事件再试
                         incompleteWrite(true);
                         return;
                     }
+                    // 调整最大值限制
                     // Casting to int is safe because we limit the total amount of data in the nioBuffers to int above.
                     adjustMaxBytesPerGatheringWrite((int) attemptedBytes, (int) localWrittenBytes,
                             maxBytesPerGatheringWrite);
+                    // 发出去的字节数拿掉，避免重复发送，
+                    // 同时，该触发写事件的触发一下事件
                     in.removeBytes(localWrittenBytes);
                     --writeSpinCount;
                     break;
@@ -437,6 +457,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
             }
         } while (writeSpinCount > 0);
 
+        // 一轮循环没写完，以任务的形式丢进去，避免把 Reactor 线程池卡死
         incompleteWrite(writeSpinCount < 0);
     }
 

@@ -205,8 +205,9 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
      * @throws Exception if an I/O exception occurs during write.
      */
     protected final int doWrite0(ChannelOutboundBuffer in) throws Exception {
+        // 拿到当前的缓冲区，
         Object msg = in.current();
-        if (msg == null) {
+        if (msg == null) {// 没有了，说明发完了
             // Directly return here so incompleteWrite(...) is not called.
             return 0;
         }

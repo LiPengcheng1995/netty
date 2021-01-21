@@ -407,14 +407,15 @@ public final class ChannelOutboundBuffer {
         final InternalThreadLocalMap threadLocalMap = InternalThreadLocalMap.get();
         ByteBuffer[] nioBuffers = NIO_BUFFERS.get(threadLocalMap);
         Entry entry = flushedEntry;
-        while (isFlushedEntry(entry) && entry.msg instanceof ByteBuf) {
+        while (isFlushedEntry(entry) && entry.msg instanceof ByteBuf) {// 如果是何时类型的缓冲区
             if (!entry.cancelled) {
                 ByteBuf buf = (ByteBuf) entry.msg;
                 final int readerIndex = buf.readerIndex();
-                final int readableBytes = buf.writerIndex() - readerIndex;
+                final int readableBytes = buf.writerIndex() - readerIndex; // 拿到可以读的字节数
 
-                if (readableBytes > 0) {
+                if (readableBytes > 0) {// 有可读字节数
                     if (maxBytes - readableBytes < nioBufferSize && nioBufferCount != 0) {
+                        // 如果加上这次的长度，会导致要发送的总字节数大于传入的最大字节数限制，直接结束
                         // If the nioBufferSize + readableBytes will overflow maxBytes, and there is at least one entry
                         // we stop populate the ByteBuffer array. This is done for 2 reasons:
                         // 1. bsd/osx don't allow to write more bytes then Integer.MAX_VALUE with one writev(...) call
@@ -428,14 +429,14 @@ public final class ChannelOutboundBuffer {
                         // - http://linux.die.net/man/2/writev
                         break;
                     }
-                    nioBufferSize += readableBytes;
+                    nioBufferSize += readableBytes;// 当前统计的字节数累加
                     int count = entry.count;
                     if (count == -1) {
                         //noinspection ConstantValueVariableUse
                         entry.count = count = buf.nioBufferCount();
                     }
                     int neededSpace = min(maxCount, nioBufferCount + count);
-                    if (neededSpace > nioBuffers.length) {
+                    if (neededSpace > nioBuffers.length) {// 该扩容就扩容
                         nioBuffers = expandNioBufferArray(nioBuffers, neededSpace, nioBufferCount);
                         NIO_BUFFERS.set(threadLocalMap, nioBuffers);
                     }
