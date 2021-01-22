@@ -98,6 +98,9 @@ public final class ChannelOutboundBuffer {
     private static final AtomicIntegerFieldUpdater<ChannelOutboundBuffer> UNWRITABLE_UPDATER =
             AtomicIntegerFieldUpdater.newUpdater(ChannelOutboundBuffer.class, "unwritable");
 
+    // 用于记录是否可写，
+    // 最低位是1表示不可写，即发送缓冲区满了【也就是  unwritable=1】
+    // 最低位是0表示可写【也就是 unwritable = 0】
     @SuppressWarnings("UnusedDeclaration")
     private volatile int unwritable;
 
@@ -112,7 +115,9 @@ public final class ChannelOutboundBuffer {
      * the message was written.
      */
     public void addMessage(Object msg, int size, ChannelPromise promise) {
+        // 创建新的数据缓冲节点
         Entry entry = Entry.newInstance(msg, size, total(msg), promise);
+        // 加进缓冲区
         if (tailEntry == null) {
             flushedEntry = null;
         } else {
@@ -191,7 +196,9 @@ public final class ChannelOutboundBuffer {
             return;
         }
 
+        // 字节长度计数减去删除的
         long newWriteBufferSize = TOTAL_PENDING_SIZE_UPDATER.addAndGet(this, -size);
+        // 如果等待发送的字节数低于阈值，发送低水位预警，要写的可以往缓冲区写了
         if (notifyWritability && newWriteBufferSize < channel.config().getWriteBufferLowWaterMark()) {
             setWritable(invokeLater);
         }
@@ -264,15 +271,19 @@ public final class ChannelOutboundBuffer {
         ChannelPromise promise = e.promise;
         int size = e.pendingSize;
 
+        // 移除第一个要发送数据,并更新要写入的数据
         removeEntry(e);
 
         if (!e.cancelled) {
             // only release message, notify and decrement if it was not canceled before.
+            // 释放数据的引用
             ReferenceCountUtil.safeRelease(msg);
             safeSuccess(promise);
+            // 计算剩余要发送的数据量，如果水位过低，触发低水位时间通知
             decrementPendingOutboundBytes(size, false, true);
         }
 
+        // 移除引用，方便 GC
         // recycle the entry
         e.recycle();
 
@@ -316,7 +327,8 @@ public final class ChannelOutboundBuffer {
     }
 
     private void removeEntry(Entry e) {
-        if (-- flushed == 0) {
+        if (-- flushed == 0) {// 将要写入 io 的数据块 -1
+            // 如果等待发送 io 的数据，已经为空，清理一下相关的引用
             // processed everything
             flushedEntry = null;
             if (e == tailEntry) {
@@ -324,6 +336,7 @@ public final class ChannelOutboundBuffer {
                 unflushedEntry = null;
             }
         } else {
+            // 更新下一个 io 要用的数据块
             flushedEntry = e.next;
         }
     }
@@ -588,12 +601,18 @@ public final class ChannelOutboundBuffer {
         return 1 << index;
     }
 
+    /**
+     * 发送低水位事件，也就是触发可写的事件
+     *
+     * @param invokeLater
+     */
     private void setWritable(boolean invokeLater) {
         for (;;) {
             final int oldValue = unwritable;
-            final int newValue = oldValue & ~1;
-            if (UNWRITABLE_UPDATER.compareAndSet(this, oldValue, newValue)) {
-                if (oldValue != 0 && newValue == 0) {
+            final int newValue = oldValue & ~1;// 保证最低位是0
+            if (UNWRITABLE_UPDATER.compareAndSet(this, oldValue, newValue)) {//设置成功
+                if (oldValue != 0 && newValue == 0) {// 设置成功，而且之前最低位是1，也就是发生了标记量的变化
+                    // 需要触发事件
                     fireChannelWritabilityChanged(invokeLater);
                 }
                 break;
@@ -615,8 +634,10 @@ public final class ChannelOutboundBuffer {
     }
 
     private void fireChannelWritabilityChanged(boolean invokeLater) {
+        // 拿到 pipeLine
+        //
         final ChannelPipeline pipeline = channel.pipeline();
-        if (invokeLater) {
+        if (invokeLater) {// 如果是异步通知，就通过提交任务的形式解耦
             Runnable task = fireChannelWritabilityChangedTask;
             if (task == null) {
                 fireChannelWritabilityChangedTask = task = new Runnable() {
@@ -699,6 +720,7 @@ public final class ChannelOutboundBuffer {
                 TOTAL_PENDING_SIZE_UPDATER.addAndGet(this, -size);
 
                 if (!e.cancelled) {
+                    // 释放引用方便 GC
                     ReferenceCountUtil.safeRelease(e.msg);
                     safeFail(e.promise, cause);
                 }

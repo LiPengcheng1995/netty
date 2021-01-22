@@ -643,7 +643,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     final void invokeHandlerAddedIfNeeded() {
         assert channel.eventLoop().inEventLoop();
-        if (firstRegistration) {
+        if (firstRegistration) {// 第一次注册到  EventLoop
             firstRegistration = false;
             // We are now registered to the EventLoop. It's time to call the callbacks for the ChannelHandlers,
             // that were added before the registration was done.
@@ -1107,6 +1107,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             this.pendingHandlerCallbackHead = null;
         }
 
+        // 调用注册 EventLoop 的回调函数
         // This must happen outside of the synchronized(...) block as otherwise handlerAdded(...) may be called while
         // holding the lock and so produce a deadlock if handlerAdded(...) will try to add another handler from outside
         // the EventLoop.

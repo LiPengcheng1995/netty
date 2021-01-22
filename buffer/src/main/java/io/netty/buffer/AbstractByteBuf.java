@@ -960,7 +960,10 @@ public abstract class AbstractByteBuf extends ByteBuf {
     public int readBytes(GatheringByteChannel out, int length)
             throws IOException {
         checkReadableBytes(length);
+        // 将可以读出来的字节数写入到 Channel 中，调用 out.write()
+        // 因为是非阻塞的操作，所以记录一下发送出去多少字节即可，上层逻辑负责处理半包
         int readBytes = getBytes(readerIndex, out, length);
+        // 修改索引
         readerIndex += readBytes;
         return readBytes;
     }

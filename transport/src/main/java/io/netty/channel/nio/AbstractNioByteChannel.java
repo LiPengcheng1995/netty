@@ -258,20 +258,20 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
         // 拿到当写入未完成时（也就是出现写半包时），可以写入的次数
-        // TODO 因为在做循环发送时，IO 线程会一直尝试进行写操作，无法即使处理其他的相关 io事件 或者任务
-        // TODO 如果网络 IO 阻塞或者对方接受过慢，会导致线程卡死
+        //  因为在做循环发送时，IO 线程会一直尝试进行写操作，无法即使处理其他的相关 io事件 或者任务
+        //  如果网络 IO 阻塞或者对方接受过慢，会导致线程卡死
         int writeSpinCount = config().getWriteSpinCount();
         do {
             // 拿到要写入的消息
             Object msg = in.current();
             if (msg == null) {
                 // 消息已经写完了
-                clearOpWrite();// 清除半包标识
+                clearOpWrite();// 清除对写入事件的监听，不需要补发半包了
                 // Directly return here so incompleteWrite(...) is not called.
                 return;
             }
             // 要发送的消息不为空，调用发送，并修改循环计数器
-            // TODO 这里如果没有写完 msg ，应该是不再调用 in.remove()，继续循环写当前元素剩下的半包
+            // 这里如果没有写完 msg ，应该是不再调用 in.remove()，继续循环写当前元素剩下的半包
             writeSpinCount -= doWriteInternal(in, msg);
         } while (writeSpinCount > 0);
 
@@ -303,7 +303,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         // Did not write completely.
         // 之前写入失败了，也就是说当前底层不太支持写
         if (setOpWrite) {
-            // 设置写半包标记位。
+            // 设置写对写入事件的监听，如果有写入事件，表明缓冲区空出来了，可以继续写入。
             // 这样，多路复用器会不停的轮询本 Channel ，用于触发对应的半包写入消息
             setOpWrite();
         } else {// 在设置的循环内没有完成整个业务数据的写入，需要继续写
