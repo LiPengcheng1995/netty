@@ -235,26 +235,36 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             return javaChannel();
         }
 
+        /**
+         * 用于连接远程
+         *
+         * @param remoteAddress
+         * @param localAddress
+         * @param promise
+         */
         @Override
         public final void connect(
                 final SocketAddress remoteAddress, final SocketAddress localAddress, final ChannelPromise promise) {
+            // 检查状态配置
             if (!promise.setUncancellable() || !ensureOpen(promise)) {
                 return;
             }
 
             try {
+
                 if (connectPromise != null) {
                     // Already a connect in process.
                     throw new ConnectionPendingException();
                 }
 
                 boolean wasActive = isActive();
-                if (doConnect(remoteAddress, localAddress)) {
+                if (doConnect(remoteAddress, localAddress)) {//连接成功
                     fulfillConnectPromise(promise, wasActive);
-                } else {
+                } else {// 连接等待远程返回
                     connectPromise = promise;
                     requestedRemoteAddress = remoteAddress;
 
+                    // 如果配置的超时时间，就添加延迟任务用于检查，并在超时后即使关闭
                     // Schedule connect timeout.
                     int connectTimeoutMillis = config().getConnectTimeoutMillis();
                     if (connectTimeoutMillis > 0) {
@@ -262,6 +272,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                             @Override
                             public void run() {
                                 ChannelPromise connectPromise = AbstractNioChannel.this.connectPromise;
+                                // 连接失败或者还没响应，就关闭连接，释放资源
                                 if (connectPromise != null && !connectPromise.isDone()
                                         && connectPromise.tryFailure(new ConnectTimeoutException(
                                                 "connection timed out: " + remoteAddress))) {
@@ -271,10 +282,11 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                         }, connectTimeoutMillis, TimeUnit.MILLISECONDS);
                     }
 
+                    // 添加连接结果监听器
                     promise.addListener(new ChannelFutureListener() {
                         @Override
                         public void operationComplete(ChannelFuture future) throws Exception {
-                            if (future.isCancelled()) {
+                            if (future.isCancelled()) {// 如果连接被取消，及时关闭连接，释放资源
                                 if (connectTimeoutFuture != null) {
                                     connectTimeoutFuture.cancel(false);
                                 }
@@ -284,7 +296,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                         }
                     });
                 }
-            } catch (Throwable t) {
+            } catch (Throwable t) {// 连接失败
                 promise.tryFailure(annotateConnectException(t, remoteAddress));
                 closeIfClosed();
             }
@@ -296,6 +308,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                 return;
             }
 
+            // 拿到当前的激活状态
             // Get the state as trySuccess() may trigger an ChannelFutureListener that will close the Channel.
             // We still need to ensure we call fireChannelActive() in this case.
             boolean active = isActive();
@@ -303,12 +316,14 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             // trySuccess() will return false if a user cancelled the connection attempt.
             boolean promiseSet = promise.trySuccess();
 
+            // 如果之前（收到第二次握手时）还没激活，（发送第三次握手后）激活了，就触发 ChannelActive 事件
             // Regardless if the connection attempt was cancelled, channelActive() event should be triggered,
             // because what happened is what happened.
             if (!wasActive && active) {
                 pipeline().fireChannelActive();
             }
 
+            // 如果用户取消了当前的连接操作，就调用关闭
             // If a user cancelled the connection attempt, close the channel, which is followed by channelInactive().
             if (!promiseSet) {
                 close(voidPromise());
@@ -326,6 +341,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             closeIfClosed();
         }
 
+        /**
+         * 收到远程的 TCP 握手应答消息后会调用这里进行连接结果的判断【感觉是三次握手的第二次握手】
+         */
         @Override
         public final void finishConnect() {
             // Note this method is invoked by the event loop only if the connection attempt was
@@ -334,10 +352,15 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             assert eventLoop().inEventLoop();
 
             try {
+                // 记录旧的连接状态
                 boolean wasActive = isActive();
+                // 继续远程连接的相关操作。感觉这里像是三次握手的第三次握手
+                // 如果底层还没连接成功，这里会抛出异常
                 doFinishConnect();
+                // 将 SocketChannel 修改为监听读操作位，用于监听网络的读事件
                 fulfillConnectPromise(connectPromise, wasActive);
             } catch (Throwable t) {
+                //
                 fulfillConnectPromise(connectPromise, annotateConnectException(t, requestedRemoteAddress));
             } finally {
                 // Check for null as the connectTimeoutFuture is only created if a connectTimeoutMillis > 0 is used
