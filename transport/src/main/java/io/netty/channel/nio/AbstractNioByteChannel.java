@@ -134,28 +134,34 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
         @Override
         public final void read() {
-            // 拿到 ChannelConfig
+            // 拿到 ChannelConfig ,这里面放的是客户端连接的 TCP 参数
             final ChannelConfig config = config();
             if (shouldBreakReadReady(config)) {
                 clearReadPending();
                 return;
             }
             final ChannelPipeline pipeline = pipeline();
+            // TODO 这里是桥梁模式，将创建缓冲区的实现策略和创建缓冲区的估算策略进行解耦
+            // 拿到创建缓冲区的具体实现
             final ByteBufAllocator allocator = config.getAllocator();
+            // 拿到计算创建 ByteBuf 缓冲区大小的估算器
+            // RecvByteBufAllocator 有两种实现， AdaptiveRecvByteBufAllocator、FixedRecvByteBufAllocator
             final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
-            allocHandle.reset(config);
+            allocHandle.reset(config);// 去 DefaultMaxMessagesRecvByteBufAllocator 看实现
 
             ByteBuf byteBuf = null;
             boolean close = false;
             try {
                 do {
+                    // 创建缓冲区 DefaultMaxMessagesRecvByteBufAllocator。只是把 guess() 的数量丢到 allocator 进行创建
                     byteBuf = allocHandle.allocate(allocator);
+                    // 进行消息的异步读取
                     allocHandle.lastBytesRead(doReadBytes(byteBuf));
-                    if (allocHandle.lastBytesRead() <= 0) {
+                    if (allocHandle.lastBytesRead() <= 0) {// 没有就绪的消息可读，或者发生了异常，不再读取
                         // nothing was read. release the buffer.
-                        byteBuf.release();
+                        byteBuf.release();// 释放缓冲区资源
                         byteBuf = null;
-                        close = allocHandle.lastBytesRead() < 0;
+                        close = allocHandle.lastBytesRead() < 0;// 如果是异常了，设置 close 状态标记
                         if (close) {
                             // There is nothing left to read as we received an EOF.
                             readPending = false;
@@ -163,15 +169,21 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                         break;
                     }
 
+                    // 如果有读到东西，更新计数量，触发事件，清理缓冲区
+                    // byteBuf 中的不一定是一个完整信息，可能会有半包和粘包
                     allocHandle.incMessagesRead(1);
                     readPending = false;
                     pipeline.fireChannelRead(byteBuf);
                     byteBuf = null;
+                    // 判断是否可以继续读
                 } while (allocHandle.continueReading());
 
+                // 同步 allocHandle 并计算下次缓冲区申请的容量
                 allocHandle.readComplete();
+                // 触发读完成事件，当然这里读到的不一定是一个完整信息
                 pipeline.fireChannelReadComplete();
 
+                // 如果需要关闭，就调用关闭
                 if (close) {
                     closeOnRead(pipeline);
                 }

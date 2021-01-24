@@ -365,6 +365,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             } finally {
                 // Check for null as the connectTimeoutFuture is only created if a connectTimeoutMillis > 0 is used
                 // See https://github.com/netty/netty/issues/1770
+                // 链接超时相关判断
                 if (connectTimeoutFuture != null) {
                     connectTimeoutFuture.cancel(false);
                 }

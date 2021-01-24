@@ -104,9 +104,9 @@ public abstract class DefaultMaxMessagesRecvByteBufAllocator implements MaxMessa
          */
         @Override
         public void reset(ChannelConfig config) {
-            this.config = config;
-            maxMessagePerRead = maxMessagesPerRead();
-            totalMessages = totalBytesRead = 0;
+            this.config = config;// 记录 TCP 连接的配置
+            maxMessagePerRead = maxMessagesPerRead();// 第一次应该是默认是 0 吧
+            totalMessages = totalBytesRead = 0;// 重置已经读到内容的计数器
         }
 
         @Override
@@ -121,6 +121,7 @@ public abstract class DefaultMaxMessagesRecvByteBufAllocator implements MaxMessa
 
         @Override
         public void lastBytesRead(int bytes) {
+            // 设置对应的上次读的，和累计读的
             lastBytesRead = bytes;
             if (bytes > 0) {
                 totalBytesRead += bytes;
@@ -139,9 +140,13 @@ public abstract class DefaultMaxMessagesRecvByteBufAllocator implements MaxMessa
 
         @Override
         public boolean continueReading(UncheckedBooleanSupplier maybeMoreDataSupplier) {
+            // maybeMoreDataSupplier.get() 将本 Allocator 分配的大小和上次读到的大小做比较，如果一样大，表明上次分出去的缓冲区可写
+            //  的大小都用完了，说明要读的内容比缓冲区可容纳的是大于等于，需要继续循环
+            //  【当然，如果占用的比分配的少，说明读完了，就不用读了】【这里是判断是否需要继续循环的，别和预计容量搞混了】
             return config.isAutoRead() &&
                    (!respectMaybeMoreData || maybeMoreDataSupplier.get()) &&
-                   totalMessages < maxMessagePerRead &&
+                   totalMessages < maxMessagePerRead &&// 读取次数总数小于单词允许的读取次数，
+                    // 这就是之前我们看的读写循环时拿 16 卡的那个逻辑，避免频繁 IO 堵死多路复用器线程
                    totalBytesRead > 0;
         }
 
