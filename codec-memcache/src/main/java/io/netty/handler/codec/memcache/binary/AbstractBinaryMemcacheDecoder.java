@@ -66,6 +66,13 @@ public abstract class AbstractBinaryMemcacheDecoder<M extends BinaryMemcacheMess
         this.chunkSize = chunkSize;
     }
 
+    /**
+     * 这里是按照 Netty的规范进行的解码
+     * @param ctx           the {@link ChannelHandlerContext} which this {@link ByteToMessageDecoder} belongs to
+     * @param in            the {@link ByteBuf} from which to read data
+     * @param out           the {@link List} to which decoded messages should be added
+     * @throws Exception
+     */
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
         switch (state) {

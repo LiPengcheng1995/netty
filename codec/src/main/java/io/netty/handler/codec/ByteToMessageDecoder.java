@@ -267,12 +267,13 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        if (msg instanceof ByteBuf) {
-            CodecOutputList out = CodecOutputList.newInstance();
+        if (msg instanceof ByteBuf) {// 如果是 ByteBuf ，就处理半包消息
+            CodecOutputList out = CodecOutputList.newInstance(); // 创建一个 List
             try {
                 first = cumulation == null;
                 cumulation = cumulator.cumulate(ctx.alloc(),
-                        first ? Unpooled.EMPTY_BUFFER : cumulation, (ByteBuf) msg);
+                        first ? Unpooled.EMPTY_BUFFER : cumulation, (ByteBuf) msg);// 把传入的 ByteBuf 加在 cumulation 后面
+                // 调用解码
                 callDecode(ctx, cumulation, out);
             } catch (DecoderException e) {
                 throw e;
@@ -298,7 +299,8 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                     out.recycle();
                 }
             }
-        } else {
+        } else { // 如果不是 ByteBuf，说明已经处理过了，直接跳过
+            // ChannelHandlerContext 中有本 ChannelHandler 和 pipeLine的关系，通过调用这个唤醒下一个 ChannelHandler
             ctx.fireChannelRead(msg);
         }
     }
@@ -421,7 +423,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
             while (in.isReadable()) {
                 int outSize = out.size();
 
-                if (outSize > 0) {
+                if (outSize > 0) {// 如果已经有对象了，先把这些传到后面的 ChannelHandler 上用着
                     fireChannelRead(ctx, out, outSize);
                     out.clear();
 
@@ -436,31 +438,39 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                     outSize = 0;
                 }
 
+                // 拿到可读的长度
                 int oldInputLength = in.readableBytes();
+
+                // 解码，并把解码结果放到 out 中
                 decodeRemovalReentryProtection(ctx, in, out);
 
                 // Check if this handler was removed before continuing the loop.
                 // If it was removed, it is not safe to continue to operate on the buffer.
                 //
                 // See https://github.com/netty/netty/issues/1664
-                if (ctx.isRemoved()) {
+                if (ctx.isRemoved()) { //如果上下文已经被移除了，解码出来的结果也没地方放，可以只饿极结束了
                     break;
                 }
 
+                // 没有产生新的结果，说明解码失败了
                 if (outSize == out.size()) {
-                    if (oldInputLength == in.readableBytes()) {
+
+                    if (oldInputLength == in.readableBytes()) {// 输入的信息也没有被消费，说明在做无用功，为了避免死循环，直接结束
+                        // TODO 个人感觉是为了处理半包，半包到这里没法再解析了，就中断循环，等剩下的半包
                         break;
-                    } else {
+                    } else {// 输入的信息被消费了一部分，说明有垃圾数据，或者有被丢弃的数据，继续处理
                         continue;
                     }
                 }
 
+                // 有产生新的结果，但是入参没有被消费，这样可能出现死循环的情况，报异常然后退出
                 if (oldInputLength == in.readableBytes()) {
                     throw new DecoderException(
                             StringUtil.simpleClassName(getClass()) +
                                     ".decode() did not read anything but decoded a message.");
                 }
 
+                // 如果配置了每次只解码一次，那就结束
                 if (isSingleDecode()) {
                     break;
                 }
@@ -482,6 +492,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
      * @param out           the {@link List} to which decoded messages should be added
      * @throws Exception    is thrown if an error occurs
      */
+    // 可以看一下 Http 协议的实现 HttpObjectDecoder
     protected abstract void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception;
 
     /**
@@ -498,6 +509,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
             throws Exception {
         decodeState = STATE_CALLING_CHILD_DECODE;
         try {
+            // 调用具体的解码实现,这里依赖于具体的通信协议
             decode(ctx, in, out);
         } finally {
             boolean removePending = decodeState == STATE_HANDLER_REMOVED_PENDING;

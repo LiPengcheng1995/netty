@@ -228,10 +228,12 @@ public abstract class HttpObjectDecoder extends ByteToMessageDecoder {
 
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf buffer, List<Object> out) throws Exception {
+        // 判定是否重置读到的半包的操作
         if (resetRequested) {
             resetNow();
         }
 
+        //TODO 这个应该是依次读 HTTP 请求的各个部分，这里后面打断点看看吧
         switch (currentState) {
         case SKIP_CONTROL_CHARS:
             // Fall-through
