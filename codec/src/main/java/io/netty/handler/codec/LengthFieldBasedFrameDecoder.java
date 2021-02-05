@@ -188,8 +188,10 @@ public class LengthFieldBasedFrameDecoder extends ByteToMessageDecoder {
 
     private final ByteOrder byteOrder;
     private final int maxFrameLength;
+    // length 开始位置的偏移量
     private final int lengthFieldOffset;
     private final int lengthFieldLength;
+    // length 结束位置的偏移量
     private final int lengthFieldEndOffset;
     private final int lengthAdjustment;
     private final int initialBytesToStrip;
@@ -342,6 +344,7 @@ public class LengthFieldBasedFrameDecoder extends ByteToMessageDecoder {
         bytesToDiscard -= localBytesToDiscard;
         this.bytesToDiscard = bytesToDiscard;
 
+        // 这里会根据 bytesToDiscard 是否减少到 0，将 discardingTooLongFrame 复位
         failIfNecessary(false);
     }
 
@@ -364,11 +367,15 @@ public class LengthFieldBasedFrameDecoder extends ByteToMessageDecoder {
         long discard = frameLength - in.readableBytes();
         tooLongFrameLength = frameLength;
 
-        if (discard < 0) {
+        // 核心思想就是把这个包扔了，在不影响后面包的前提下
+        if (discard < 0) {// frameLength 比可读的少，说明后面还有别的包，
+            // 只把这个有问题的包丢弃
             // buffer contains more bytes then the frameLength so we can discard all now
             in.skipBytes((int) frameLength);
-        } else {
+        } else {// frameLength 比可读的多/等于，说明就这一个包
+            // 把这个包扔了就行了【都扔】
             // Enter the discard mode and discard everything received so far.
+            // 设置好标记，方便接下来继续扔
             discardingTooLongFrame = true;
             bytesToDiscard = discard;
             in.skipBytes(in.readableBytes());
@@ -394,27 +401,39 @@ public class LengthFieldBasedFrameDecoder extends ByteToMessageDecoder {
      *                          be created.
      */
     protected Object decode(ChannelHandlerContext ctx, ByteBuf in) throws Exception {
+        // 如果前面扔了一部分过长的消息，这里剩下的半包继续过来，就得继续扔
         if (discardingTooLongFrame) {
             discardingTooLongFrame(in);
         }
 
+        // 进来的消息还读不到长度，直接等待【此处处理半包】
         if (in.readableBytes() < lengthFieldEndOffset) {
             return null;
         }
 
+        // 计算出开始读长度的地方
         int actualLengthFieldOffset = in.readerIndex() + lengthFieldOffset;
+        // 读取出长度
         long frameLength = getUnadjustedFrameLength(in, actualLengthFieldOffset, lengthFieldLength, byteOrder);
 
+        // 长度不合理，抛异常结束
         if (frameLength < 0) {
             failOnNegativeLengthField(in, frameLength, lengthFieldEndOffset);
         }
 
+        // frameLength + lengthAdjustment = length 字段后面的数据长度
+        //
+        // frameLength + lengthAdjustment + lengthFieldEndOffset
+        // = length 字段后面的数据长度 + lengthFieldEndOffset
+        // = 总长度
         frameLength += lengthAdjustment + lengthFieldEndOffset;
 
+        // 剔除一些不合理的情况
         if (frameLength < lengthFieldEndOffset) {
             failOnFrameLengthLessThanLengthFieldEndOffset(in, frameLength, lengthFieldEndOffset);
         }
 
+        // 单次消息超过允许消息的最大长度
         if (frameLength > maxFrameLength) {
             exceededFrameLength(in, frameLength);
             return null;
@@ -422,17 +441,20 @@ public class LengthFieldBasedFrameDecoder extends ByteToMessageDecoder {
 
         // never overflows because it's less than maxFrameLength
         int frameLengthInt = (int) frameLength;
-        if (in.readableBytes() < frameLengthInt) {
+        if (in.readableBytes() < frameLengthInt) { // 如果消息的总长度小于当前可读的长度，说明有半包，就等剩下的
             return null;
         }
 
-        if (initialBytesToStrip > frameLengthInt) {
+        // 到这里，这个包就全了，但是可能会有粘包
+        if (initialBytesToStrip > frameLengthInt) {// 如果要跳过的比整个消息大，就报错
             failOnFrameLengthLessThanInitialBytesToStrip(in, frameLength, initialBytesToStrip);
         }
+        // 跳过不需要解析的部分
         in.skipBytes(initialBytesToStrip);
 
         // extract frame
         int readerIndex = in.readerIndex();
+        // 拿到要解析的部分长度
         int actualFrameLength = frameLengthInt - initialBytesToStrip;
         ByteBuf frame = extractFrame(ctx, in, readerIndex, actualFrameLength);
         in.readerIndex(readerIndex + actualFrameLength);

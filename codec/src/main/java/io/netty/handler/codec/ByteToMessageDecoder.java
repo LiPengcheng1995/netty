@@ -313,6 +313,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
         if (msgs instanceof CodecOutputList) {
             fireChannelRead(ctx, (CodecOutputList) msgs, numElements);
         } else {
+            // 这里都是一个一个的传的，也就是说后面的处理器不用关心半包和粘包了。拿到的都是处理好的每次请求的内容
             for (int i = 0; i < numElements; i++) {
                 ctx.fireChannelRead(msgs.get(i));
             }
@@ -424,7 +425,8 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
             while (in.isReadable()) {
                 int outSize = out.size();
 
-                if (outSize > 0) {// 如果已经有对象了，先把这些传到后面的 ChannelHandler 上用着
+                if (outSize > 0) {
+                    // 将上一个循环拿到的结果一个一个传到后面的 ChannelHandler 上用着
                     fireChannelRead(ctx, out, outSize);
                     out.clear();
 

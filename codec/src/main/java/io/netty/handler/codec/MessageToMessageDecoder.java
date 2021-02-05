@@ -77,19 +77,27 @@ public abstract class MessageToMessageDecoder<I> extends ChannelInboundHandlerAd
         return matcher.match(msg);
     }
 
+    /**
+     * 这里都是业务层的逻辑转换了，不用考虑半包和粘包
+     * @param ctx
+     * @param msg
+     * @throws Exception
+     */
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        // 创建用于存储转换结果的数据结构
         CodecOutputList out = CodecOutputList.newInstance();
         try {
-            if (acceptInboundMessage(msg)) {
+            if (acceptInboundMessage(msg)) {// 如果是需要解码的数据结构，就进行转换
                 @SuppressWarnings("unchecked")
                 I cast = (I) msg;
                 try {
+                    // 调用定制的解析逻辑
                     decode(ctx, cast, out);
-                } finally {
+                } finally {// 解析完成，将 msg 释放
                     ReferenceCountUtil.release(cast);
                 }
-            } else {
+            } else {// 否则不操作，直接通过
                 out.add(msg);
             }
         } catch (DecoderException e) {
@@ -100,6 +108,7 @@ public abstract class MessageToMessageDecoder<I> extends ChannelInboundHandlerAd
             try {
                 int size = out.size();
                 for (int i = 0; i < size; i++) {
+                    // 如果有获得解析结果，就通知上下文，也就是说让转换结果继续在 pipeLine 上传递
                     ctx.fireChannelRead(out.getUnsafe(i));
                 }
             } finally {
