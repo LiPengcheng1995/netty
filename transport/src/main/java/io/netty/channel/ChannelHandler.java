@@ -175,6 +175,12 @@ import java.lang.annotation.Target;
  * what fundamental differences they have, how they flow in a  pipeline,  and how to handle
  * the operation in your application.
  */
+// 主要内容有以下三点：
+// 1. 这是 ChannelHandler 的基础类，如果要用，一般会根据你是关注进来的事件还是出去的事件，使用 ChannelInboundHandler/ChannelOutboundHandler
+// 2. ChannelHandler 在使用时都是放在 ChannelPipeLine 中使用的， ChannelHandlerContext 就是记录他们关系的桥梁
+// 3. ChannelHandler 如果是有状态的【比如你创建了一个类变量/对象级别的变量】，就不要打 @Sharable，每次往 ChannelPipeLine 中加都 new 新的
+//    当然 ，如果不想一直 new，可以考虑在写代码时不要在 ChannelHandler 中创建状态变量，所有的状态变量都走 ChannelHandlerContext, 这样就线
+//    程安全了。
 public interface ChannelHandler {
 
     /**

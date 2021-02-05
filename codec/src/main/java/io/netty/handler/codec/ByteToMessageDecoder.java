@@ -74,6 +74,7 @@ import static java.lang.Integer.MAX_VALUE;
  */
 public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter {
 
+    // 把输入的信息拷贝到 cumulation 中进行累积，方便处理半包和粘包
     /**
      * Cumulate {@link ByteBuf}s by merge them into one {@link ByteBuf}'s, using memory copies.
      */
@@ -456,7 +457,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                 if (outSize == out.size()) {
 
                     if (oldInputLength == in.readableBytes()) {// 输入的信息也没有被消费，说明在做无用功，为了避免死循环，直接结束
-                        // TODO 个人感觉是为了处理半包，半包到这里没法再解析了，就中断循环，等剩下的半包
+                        // 这里是为了处理半包，半包到这里没法再解析了，就中断循环，等剩下的半包
                         break;
                     } else {// 输入的信息被消费了一部分，说明有垃圾数据，或者有被丢弃的数据，继续处理
                         continue;
@@ -493,6 +494,15 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
      * @throws Exception    is thrown if an error occurs
      */
     // 可以看一下 Http 协议的实现 HttpObjectDecoder
+
+    /**
+     * 解码器的实现需要遵循 netty 的契约：
+     * 1. 如果认为当前输入信息无法业务层解码，需要将 readIndex 复位
+     * @param ctx
+     * @param in
+     * @param out
+     * @throws Exception
+     */
     protected abstract void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception;
 
     /**
@@ -537,6 +547,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
         }
     }
 
+    // 此处可以优化，参考之前做读写时的策略，进行少时倍增、长时步进的策略以避免不停的来半包消息时不行的扩张
     static ByteBuf expandCumulation(ByteBufAllocator alloc, ByteBuf oldCumulation, ByteBuf in) {
         int oldBytes = oldCumulation.readableBytes();
         int newBytes = in.readableBytes();

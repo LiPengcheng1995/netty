@@ -38,6 +38,8 @@ public abstract class ChannelHandlerAdapter implements ChannelHandler {
         }
     }
 
+    // 如果 ChannelHandler 的实现类是线程安全的，就可以打上 @Sharable 注解，表示可以被添加到多个 pipeLine 中
+    // 被多个 pipeLine 中各自的线程分别执行
     /**
      * Return {@code true} if the implementation is {@link Sharable} and so can be added
      * to different {@link ChannelPipeline}s.

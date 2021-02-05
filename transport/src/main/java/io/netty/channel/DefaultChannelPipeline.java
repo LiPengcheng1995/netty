@@ -117,9 +117,12 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     }
 
     private AbstractChannelHandlerContext newContext(EventExecutorGroup group, String name, ChannelHandler handler) {
+        // 创建一个 ChannelHandlerContext ，传入对应的 所属 pipeLine、执行器、名称、处理器
         return new DefaultChannelHandlerContext(this, childExecutor(group), name, handler);
     }
 
+    // 之前了解过了 EventExecutorGroup 是一个 EventExecutor 的数组，这里需要拿出一个具体的
+    // EventExecutor 作为对应的执行器，放到上下文中
     private EventExecutor childExecutor(EventExecutorGroup group) {
         if (group == null) {
             return null;
@@ -237,35 +240,63 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         return addBefore(null, baseName, name, handler);
     }
 
+    /**
+     * 向 pipeLine 中添加一个 ChannelHandler，添加成功后调用 ChannelHandler 对应的 handlerAdded()
+     * 进行事件通知
+     * @param group     the {@link EventExecutorGroup} which will be used to execute the {@link ChannelHandler}
+     *                  methods
+     * @param baseName  the name of the existing handler
+     * @param name      the name of the handler to insert before
+     * @param handler   the handler to insert before
+     *
+     * @return
+     */
     @Override
     public final ChannelPipeline addBefore(
             EventExecutorGroup group, String baseName, String name, ChannelHandler handler) {
         final AbstractChannelHandlerContext newCtx;
         final AbstractChannelHandlerContext ctx;
+        //因为 pipeLine 支持运行时期进行动态的修改，所以存在以下调用场景：
+        // 1. IO 线程和用户线程的并发访问
+        // 2. 用户多个线程的并发访问
+        // 【IO 不会多线程并发访问是因为每个 pipeLine 会对应一个连接，所以不会出现 IO 的多线程】
+        // 为保证线程安全，pipeLine 对应的修改操作进行加锁处理
         synchronized (this) {
+            // 校验，避免线程不安全的 Handler 被添加到不同的 pipeLine 被并发执行
             checkMultiplicity(handler);
+            // 如果没有显式传入 name ，就需要自动生成一个
+            // 这里需要判断，避免 name 出现重复
             name = filterName(name, handler);
+            // 拿到传入的 baseName 对应的 ChannelHandlerContext【其实就是遍历 context 的列表，拿 name 一个一个的比】
             ctx = getContextOrDie(baseName);
 
+            // 为传入的 ChannelHandler 创建新的 ChannelHandlerContext
             newCtx = newContext(group, name, handler);
 
+            // 把新创建的上下文插到对应的上下文的前面
             addBefore0(ctx, newCtx);
 
+            // 如果当前 pipeLine 还没在 eventLoop 中创建就在把新的 ChannelHandlerContext 加入到 pipeLine 后再
+            // 加个任务，等 pipeLine注册好了再调用对应的注册成功事件
             // If the registered is false it means that the channel was not registered on an eventLoop yet.
             // In this case we add the context to the pipeline and add a task that will call
             // ChannelHandler.handlerAdded(...) once the channel is registered.
             if (!registered) {
+                // 设置这个，表明此上下文正在注册 pipeLine
                 newCtx.setAddPending();
                 callHandlerCallbackLater(newCtx, true);
                 return this;
             }
 
             EventExecutor executor = newCtx.executor();
+            // 调用此函数的线程不是 newCtx.executor() 中的线程，那就通过提交任务的形式，让 newCtx.executor() 执行事件通知
             if (!executor.inEventLoop()) {
                 callHandlerAddedInEventLoop(newCtx, executor);
                 return this;
             }
         }
+        // 能走到这里，说明调用此函数的线程是 newCtx.executor() 中的线程，事件通知任务通过 newCtx.executor() 执行是线程安全的
+        // 可以直接在本线程中放弃锁后进行通知
         callHandlerAdded0(newCtx);
         return this;
     }
@@ -595,6 +626,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     private static void checkMultiplicity(ChannelHandler handler) {
         if (handler instanceof ChannelHandlerAdapter) {
             ChannelHandlerAdapter h = (ChannelHandlerAdapter) handler;
+            // 如果不是可分享的（也就是说线程不安全），就不允许重复添加到多个 pipeLine 中
             if (!h.isSharable() && h.added) {
                 throw new ChannelPipelineException(
                         h.getClass().getName() +
@@ -1121,8 +1153,10 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     private void callHandlerCallbackLater(AbstractChannelHandlerContext ctx, boolean added) {
         assert !registered;
 
+        // 创建任务
         PendingHandlerCallback task = added ? new PendingHandlerAddedTask(ctx) : new PendingHandlerRemovedTask(ctx);
         PendingHandlerCallback pending = pendingHandlerCallbackHead;
+        // 把任务添加到任务链里
         if (pending == null) {
             pendingHandlerCallbackHead = task;
         } else {

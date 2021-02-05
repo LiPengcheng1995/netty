@@ -67,10 +67,12 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     private static final AtomicIntegerFieldUpdater<AbstractChannelHandlerContext> HANDLER_STATE_UPDATER =
             AtomicIntegerFieldUpdater.newUpdater(AbstractChannelHandlerContext.class, "handlerState");
 
+    // 这个状态表明正在向 pipeLine 中添加，稍后会调用添加完成的事件
     /**
      * {@link ChannelHandler#handlerAdded(ChannelHandlerContext)} is about to be called.
      */
     private static final int ADD_PENDING = 1;
+    // 这个状态表明正在向 pipeLine 中添加完成
     /**
      * {@link ChannelHandler#handlerAdded(ChannelHandlerContext)} was called.
      */
@@ -79,6 +81,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
      * {@link ChannelHandler#handlerRemoved(ChannelHandlerContext)} was called.
      */
     private static final int REMOVE_COMPLETE = 3;
+    // 这个状态表示啥都没干，刚初始化好
     /**
      * Neither {@link ChannelHandler#handlerAdded(ChannelHandlerContext)}
      * nor {@link ChannelHandler#handlerRemoved(ChannelHandlerContext)} was called.
@@ -926,16 +929,19 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         }
     }
 
+    // 表明此上下文正在注册 pipeLine
     final void setAddPending() {
         boolean updated = HANDLER_STATE_UPDATER.compareAndSet(this, INIT, ADD_PENDING);
         assert updated; // This should always be true as it MUST be called before setAddComplete() or setRemoved().
     }
 
+    // 表明此上下文完成 pipeLine 注册
     final void callHandlerAdded() throws Exception {
         // We must call setAddComplete before calling handlerAdded. Otherwise if the handlerAdded method generates
         // any pipeline events ctx.handler() will miss them because the state will not allow it.
-        if (setAddComplete()) {
-            handler().handlerAdded(this);
+        //
+        if (setAddComplete()) {// 必须先更新状态再触发事件
+            handler().handlerAdded(this);// 调用此上下文对应的 handler 做事件通知
         }
     }
 
