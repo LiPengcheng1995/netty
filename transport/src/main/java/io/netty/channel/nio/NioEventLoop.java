@@ -594,9 +594,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     }
 
     private void processSelectedKeys() {
-        if (selectedKeys != null) {
+        if (selectedKeys != null) {// 开启 selector 优化
             processSelectedKeysOptimized();
-        } else {
+        } else {// 默认未开启对应的 selector 优化
             processSelectedKeysPlain(selector.selectedKeys());
         }
     }
@@ -633,9 +633,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             final Object a = k.attachment();
             i.remove();
 
-            if (a instanceof AbstractNioChannel) {
+            if (a instanceof AbstractNioChannel) {// 是 IO 读写相关的操作
                 processSelectedKey(k, (AbstractNioChannel) a);
-            } else {
+            } else {// 处理 io 任务，这里一般走不到
                 @SuppressWarnings("unchecked")
                 NioTask<SelectableChannel> task = (NioTask<SelectableChannel>) a;
                 processSelectedKey(k, task);
@@ -690,7 +690,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     private void processSelectedKey(SelectionKey k, AbstractNioChannel ch) {
         final AbstractNioChannel.NioUnsafe unsafe = ch.unsafe();
-        if (!k.isValid()) {
+        if (!k.isValid()) {// SelectionKey 无效，需要关闭
             final EventLoop eventLoop;
             try {
                 eventLoop = ch.eventLoop();
