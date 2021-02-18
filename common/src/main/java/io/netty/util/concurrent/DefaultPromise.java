@@ -93,7 +93,7 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
 
     @Override
     public Promise<V> setSuccess(V result) {
-        if (setSuccess0(result)) {
+        if (setSuccess0(result)) {// 如果这里设置成功，直接OK，否则抛出异常
             return this;
         }
         throw new IllegalStateException("complete already: " + this);
@@ -610,9 +610,9 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
 
     private boolean setValue0(Object objResult) {
         if (RESULT_UPDATER.compareAndSet(this, null, objResult) ||
-            RESULT_UPDATER.compareAndSet(this, UNCANCELLABLE, objResult)) {
+            RESULT_UPDATER.compareAndSet(this, UNCANCELLABLE, objResult)) {// 使用cas设置，避免他自己本来就结束了，这里再重复通知
             if (checkNotifyWaiters()) {
-                notifyListeners();
+                notifyListeners();// 通知监听器
             }
             return true;
         }
@@ -670,7 +670,9 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         boolean interrupted = false;
         try {
             for (;;) {
-                synchronized (this) {
+                synchronized (this) {// 抢锁等待，这里没用之前 AQS 的队列，自己整了一个，【java8 优化过，性能应该没事，这里也控制了睡眠时间，应该不至于无响应】
+                    // 但是如果等待的线程多的话，而且设置的waitTime也挺大的话，也不好说，搞不好有线程一直卡在这无响应，也挺难受的。也就是实现简单，毕竟不如 AQS 扩展好
+                    // 可以参考吧
                     if (isDone()) {
                         return true;
                     }
