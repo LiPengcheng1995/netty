@@ -114,6 +114,7 @@ public abstract class Recycler<T> {
     private final int maxDelayedQueuesPerThread;
     private final int delayedQueueInterval;
 
+    // 一个定制的 ThreadLocal ，在使用特定类型的线程时可以获得稍微好一点的性能
     private final FastThreadLocal<Stack<T>> threadLocal = new FastThreadLocal<Stack<T>>() {
         @Override
         protected Stack<T> initialValue() {
@@ -170,9 +171,11 @@ public abstract class Recycler<T> {
         if (maxCapacityPerThread == 0) {
             return newObject((Handle<T>) NOOP_HANDLE);
         }
+        // 同一个线程内进行重用，保证不用了就是不用了，避免多线程造成的问题
         Stack<T> stack = threadLocal.get();
         DefaultHandle<T> handle = stack.pop();
         if (handle == null) {
+            // 如果拿不到可以重用的，就创建新的
             handle = stack.newHandle();
             handle.value = newObject(handle);
         }

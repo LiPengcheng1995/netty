@@ -41,6 +41,25 @@ import java.util.Set;
  * @param <V> the type of the thread-local variable
  * @see ThreadLocal
  */
+
+/**
+ * 之前的 ThreadLocal 是通过在 Thread 实例中设置一个 Map，然后拿 a 线程 ThreadLocal 中的值时通过，取 Map 中 a 对应的 value 得以实现。
+ *
+ * 这里认为在从 Map 中取 a 对应的 value 时涉及 哈希操作和对应的冲突解决。所以就做了一种更加新颖的实现。
+ *
+ * 在创建 FastThreadLocal 对象时给它分批一个全剧唯一的数值，当作下标。在 FastThread 类型的线程实现时，使用一个新的数组来存储所有的value。
+ * 在存取时，如果 Thread 和 ThreadLocal 都是对应类型的实现时，只需要拿着 FastThreadLocal 的唯一数值去 FastThread 的数组中取值即可。
+ * 不用哈希，也不会有冲突。
+ *
+ * 但是这里存在缺点：
+ * 1. 创建的 FastThreadLocal 实例增加时，FastThread 中的数组也会不断变大。如果我有一千个实例，那每次创建新线程就要先申请一个长度为一千的数组
+ * 2. 如果 FastThreadLocal 使用不当，容易出现数组中的数据密度极低的情况
+ * 3. ThreadLocal 中考虑到过期操作，用了弱引用的一大堆东西，这里实现比较简单，没考虑那么多
+ * 4. 面对非 FastThread 时，这里通过 ThreadLocal 存储，两次索引，性能反而降低
+ *
+ * 总结一下： 追求机制性能，在空间上做了一定的妥协
+ * @param <V>
+ */
 public class FastThreadLocal<V> {
 
     private static final int variablesToRemoveIndex = InternalThreadLocalMap.nextVariableIndex();

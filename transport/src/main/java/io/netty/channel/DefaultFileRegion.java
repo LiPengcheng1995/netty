@@ -127,6 +127,7 @@ public class DefaultFileRegion extends AbstractReferenceCounted implements FileR
         // Call open to make sure fc is initialized. This is a no-oop if we called it before.
         open();
 
+        // 调用 jdk 提供的零拷贝技术，直接讲文件发到 socket 中
         long written = file.transferTo(this.position + position, count, target);
         if (written > 0) {
             transferred += written;

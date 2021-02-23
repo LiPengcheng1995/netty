@@ -41,6 +41,7 @@ import java.util.NoSuchElementException;
 
 import static io.netty.util.internal.ObjectUtil.checkNotNull;
 
+// ByteBuf 的一个装饰器，将多个 ByteBuf 封装成一个，并对外提供。
 /**
  * A virtual buffer which shows multiple buffers as a single merged buffer.  It is recommended to use
  * {@link ByteBufAllocator#compositeBuffer()} or {@link Unpooled#wrappedBuffer(ByteBuf...)} instead of calling the
@@ -274,6 +275,7 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf implements
         }
     }
 
+    // 添加 ByteBuf
     /**
      * Precondition is that {@code buffer != null}.
      */
@@ -281,8 +283,10 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf implements
         assert buffer != null;
         boolean wasAdded = false;
         try {
+            // 保证下标可达
             checkComponentIndex(cIndex);
 
+            // 将入参封装成一个容器
             // No need to consolidate - just add a component to the list.
             Component c = newComponent(ensureAccessible(buffer), 0);
             int readableBytes = c.length();
@@ -291,6 +295,7 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf implements
             // See https://github.com/netty/netty/issues/10194
             checkForOverflow(capacity(), readableBytes);
 
+            // 将新封装的容器加入集合中
             addComp(cIndex, c);
             wasAdded = true;
             if (readableBytes > 0 && cIndex < componentCount - 1) {
