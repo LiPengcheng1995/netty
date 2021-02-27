@@ -1157,7 +1157,8 @@ public abstract class AbstractByteBuf extends ByteBuf {
         // 字符写入
         int writtenBytes = setBytes(writerIndex, in, length);
         // 调整指针
-        if (writtenBytes > 0) {
+        // 如果 writtenBytes 为负数，表明连接异常了，上层业务逻辑要考虑是否要断开连接了
+        if (writtenBytes > 0) {// 这里是正常进行了信息读取
             writerIndex += writtenBytes;
         }
         return writtenBytes;

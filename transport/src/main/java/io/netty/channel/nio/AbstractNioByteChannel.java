@@ -140,6 +140,11 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             }
         }
 
+        /**
+         * 不是所有调用这里的都是用来读远程发来的信息的。
+         * 如果远程连接挂了，也会被 Select 到 key ，调用过来，不过底层读字节的会返回-1，
+         * 然后这里会根据配置释放资源
+         */
         @Override
         public final void read() {
             // 拿到 ChannelConfig ,这里面放的是客户端连接的 TCP 参数
@@ -165,11 +170,11 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                     byteBuf = allocHandle.allocate(allocator);
                     // 进行消息的异步读取
                     allocHandle.lastBytesRead(doReadBytes(byteBuf));
-                    if (allocHandle.lastBytesRead() <= 0) {// 没有就绪的消息可读，或者发生了异常，不再读取
+                    if (allocHandle.lastBytesRead() <= 0) {// 当前没有就绪的消息可读，或者或者连接断开了
                         // nothing was read. release the buffer.
                         byteBuf.release();// 释放缓冲区资源
                         byteBuf = null;
-                        close = allocHandle.lastBytesRead() < 0;// 如果是异常了，设置 close 状态标记
+                        close = allocHandle.lastBytesRead() < 0;// 如果是连接异常了，设置 close 状态标记
                         if (close) {
                             // There is nothing left to read as we received an EOF.
                             readPending = false;

@@ -250,6 +250,9 @@ abstract class PooledByteBuf<T> extends AbstractReferenceCountedByteBuf {
     @Override
     public final int setBytes(int index, ScatteringByteChannel in, int length) throws IOException {
         try {
+            // 调用 Java 的 api 读取输入信息
+            // 如果为非负数，表明读到的数据。如果为-1，表示通道的信息读完了【也就是整个连接永远不会再有新的消息进来了】
+            // 当远程连接端挂了的时候，调用此方法会返回 -1
             return in.read(internalNioBuffer(index, length));
         } catch (ClosedChannelException ignored) {
             return -1;
