@@ -264,7 +264,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                     connectPromise = promise;
                     requestedRemoteAddress = remoteAddress;
 
-                    // 如果配置的超时时间，就添加延迟任务用于检查，并在超时后即使关闭
+                    // 如果配置的超时时间，就添加延迟任务用于检查，并在超时后及时关闭
                     // Schedule connect timeout.
                     int connectTimeoutMillis = config().getConnectTimeoutMillis();
                     if (connectTimeoutMillis > 0) {

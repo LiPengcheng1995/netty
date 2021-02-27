@@ -98,15 +98,21 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     protected class NioByteUnsafe extends AbstractNioUnsafe {
 
         private void closeOnRead(ChannelPipeline pipeline) {
-            if (!isInputShutdown0()) {
+            // 调用Java socket api 确认是否底层读被关闭。【这里是读】
+            if (!isInputShutdown0()) {// 如果没有被关闭
                 if (isAllowHalfClosure(config())) {
+                    // 判断配置是否允许 socket 连接允许远程端关闭后单方面连接，如果允许，这里只关闭输入
+                    // 调用 Java socket api 关闭连接
                     shutdownInput();
+                    // 发布事件，通知关闭
                     pipeline.fireUserEventTriggered(ChannelInputShutdownEvent.INSTANCE);
                 } else {
+                    // 配置不允许 socket 本地单方面连接，就关闭整个连接
                     close(voidPromise());
                 }
-            } else {
+            } else {// 读被关闭
                 inputClosedSeenErrorOnRead = true;
+                // 发布事件，通知关闭
                 pipeline.fireUserEventTriggered(ChannelInputShutdownReadComplete.INSTANCE);
             }
         }
@@ -114,17 +120,19 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         private void handleReadException(ChannelPipeline pipeline, ByteBuf byteBuf, Throwable cause, boolean close,
                 RecvByteBufAllocator.Handle allocHandle) {
             if (byteBuf != null) {
-                if (byteBuf.isReadable()) {
-                    readPending = false;
-                    pipeline.fireChannelRead(byteBuf);
-                } else {
+                if (byteBuf.isReadable()) {// byteBuf 中有要处理的数据
+                    readPending = false;// 标记当前没有阅读代办
+                    pipeline.fireChannelRead(byteBuf);// 处理前面读到的内容
+                } else {// byteBuf没有要处理的数据
                     byteBuf.release();
                 }
             }
+            // 触发读完成和读异常
             allocHandle.readComplete();
             pipeline.fireChannelReadComplete();
             pipeline.fireExceptionCaught(cause);
 
+            // 如果是 IO 异常或者内存泄漏，就关闭此连接
             // If oom will close the read event, release connection.
             // See https://github.com/netty/netty/issues/10434
             if (close || cause instanceof OutOfMemoryError || cause instanceof IOException) {
@@ -172,8 +180,8 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                     // 如果有读到东西，更新计数量，触发事件，清理缓冲区
                     // byteBuf 中的不一定是一个完整信息，可能会有半包和粘包
                     allocHandle.incMessagesRead(1);
-                    readPending = false;
-                    pipeline.fireChannelRead(byteBuf);
+                    readPending = false; // 标记当前没有阅读代办
+                    pipeline.fireChannelRead(byteBuf);// 调用操作，处理读到的内容
                     byteBuf = null;
                     // 判断是否可以继续读
                 } while (allocHandle.continueReading());
@@ -188,6 +196,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                     closeOnRead(pipeline);
                 }
             } catch (Throwable t) {
+                // 从 socket 读取内容时出现异常，就调用此方法进行处理
                 handleReadException(pipeline, byteBuf, t, close, allocHandle);
             } finally {
                 // Check if there is a readPending which was not processed yet.
